@@ -26,6 +26,19 @@ interface ProductForm {
     stock: string;
 }
 
+interface ApiObjectResponse {
+    message?: string;
+    product?: Product;
+    products?: Product[];
+    unread_count?: number;
+    errors?: Record<string, string[]>;
+}
+
+type ApiResponse =
+    | ApiObjectResponse
+    | Product[]
+    | Record<string, never>;
+
 const API_URL =
     process.env.NEXT_PUBLIC_API_URL ||
     "http://127.0.0.1:8000/api";
@@ -34,7 +47,6 @@ export default function ProductsPage() {
     const router = useRouter();
 
     const [products, setProducts] = useState<Product[]>([]);
-
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState<number | null>(null);
@@ -58,7 +70,7 @@ export default function ProductsPage() {
     /*
      * RÉCUPÉRER LE TOKEN
      */
-    const getToken = () => {
+    const getToken = (): string | null => {
         if (typeof window === "undefined") {
             return null;
         }
@@ -70,8 +82,10 @@ export default function ProductsPage() {
      * DÉCONNEXION FORCÉE
      */
     const forceLogout = useCallback(() => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        if (typeof window !== "undefined") {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+        }
 
         router.push("/");
     }, [router]);
@@ -98,7 +112,28 @@ export default function ProductsPage() {
     };
 
     /*
-     * RÉCUPÉRER LE NOMBRE DE NOTIFICATIONS NON LUES
+     * LIRE UNE RÉPONSE DE L'API
+     */
+    const parseResponse = async (
+        response: Response
+    ): Promise<ApiResponse> => {
+        const text = await response.text();
+
+        if (!text) {
+            return {};
+        }
+
+        try {
+            return JSON.parse(text) as ApiResponse;
+        } catch {
+            return {
+                message: text,
+            };
+        }
+    };
+
+    /*
+     * RÉCUPÉRER LES NOTIFICATIONS NON LUES
      */
     const fetchUnreadNotifications = useCallback(async () => {
         const token = getToken();
@@ -125,22 +160,25 @@ export default function ProductsPage() {
                 return;
             }
 
-            const text = await response.text();
-
-            const data = text
-                ? JSON.parse(text)
-                : {};
+            const data = await parseResponse(response);
 
             if (!response.ok) {
+                const message =
+                    !Array.isArray(data)
+                        ? data.message
+                        : undefined;
+
                 throw new Error(
-                    data.message ||
+                    message ||
                         "Impossible de récupérer les notifications."
                 );
             }
 
-            setUnreadCount(
-                Number(data.unread_count) || 0
-            );
+            if (!Array.isArray(data)) {
+                setUnreadCount(
+                    Number(data.unread_count) || 0
+                );
+            }
         } catch (err) {
             console.error(
                 "Erreur récupération compteur notifications :",
@@ -150,7 +188,7 @@ export default function ProductsPage() {
     }, [forceLogout]);
 
     /*
-     * RÉCUPÉRER LES PRODUITS DEPUIS L'API
+     * RÉCUPÉRER LES PRODUITS
      */
     const fetchProducts = useCallback(async () => {
         const token = getToken();
@@ -180,7 +218,7 @@ export default function ProductsPage() {
                 return;
             }
 
-            const data = await response.json();
+            const data = await parseResponse(response);
 
             console.log(
                 "Produits reçus depuis Laravel :",
@@ -188,19 +226,28 @@ export default function ProductsPage() {
             );
 
             if (!response.ok) {
+                const message =
+                    !Array.isArray(data)
+                        ? data.message
+                        : undefined;
+
                 throw new Error(
-                    data.message ||
+                    message ||
                         "Impossible de récupérer les produits."
                 );
             }
 
             if (Array.isArray(data)) {
                 setProducts(data);
-            } else if (Array.isArray(data.products)) {
-                setProducts(data.products);
-            } else {
-                setProducts([]);
+                return;
             }
+
+            if (Array.isArray(data.products)) {
+                setProducts(data.products);
+                return;
+            }
+
+            setProducts([]);
         } catch (err) {
             console.error(
                 "Erreur récupération produits :",
@@ -264,24 +311,79 @@ export default function ProductsPage() {
         setSaving(true);
 
         try {
+            const productBeingEdited = editingProduct;
             const isEditing =
-                editingProduct !== null;
+                productBeingEdited !== null;
 
             const url = isEditing
-                ? `${API_URL}/products/${editingProduct.id}`
+                ? `${API_URL}/products/${productBeingEdited.id}`
                 : `${API_URL}/products`;
 
             const method = isEditing
                 ? "PUT"
                 : "POST";
 
-            const body = {
-                name: form.name.trim(),
-                description:
-                    form.description.trim() || null,
-                price: Number(form.price),
-                stock: Number(form.stock),
-            };
+            const name = form.name.trim();
+            const description =
+                form.description.trim();
+
+            const priceValue = form.price.trim();
+            const stockValue = form.stock.trim();
+
+            /*
+             * VALIDATION DU NOM
+             */
+            if (!name) {
+                throw new Error(
+                    "Le nom du produit est obligatoire."
+                );
+            }
+
+            /*
+             * VALIDATION DU PRIX
+             */
+            if (
+                priceValue === "" ||
+                !/^-?\d+(\.\d+)?$/.test(priceValue)
+            ) {
+                throw new Error(
+                    "Le prix doit être un nombre supérieur ou égal à 0."
+                );
+            }
+
+            const price = Number(priceValue);
+
+            if (
+                !Number.isFinite(price) ||
+                price < 0
+            ) {
+                throw new Error(
+                    "Le prix doit être un nombre supérieur ou égal à 0."
+                );
+            }
+
+            /*
+             * VALIDATION DU STOCK
+             */
+            if (
+                stockValue === "" ||
+                !/^-?\d+$/.test(stockValue)
+            ) {
+                throw new Error(
+                    "Le stock doit être un nombre entier supérieur ou égal à 0."
+                );
+            }
+
+            const stock = Number(stockValue);
+
+            if (
+                !Number.isInteger(stock) ||
+                stock < 0
+            ) {
+                throw new Error(
+                    "Le stock doit être un nombre entier supérieur ou égal à 0."
+                );
+            }
 
             const response = await fetch(url, {
                 method,
@@ -291,7 +393,12 @@ export default function ProductsPage() {
                         "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify(body),
+                body: JSON.stringify({
+                    name,
+                    description: description || null,
+                    price,
+                    stock,
+                }),
             });
 
             if (response.status === 401) {
@@ -299,10 +406,14 @@ export default function ProductsPage() {
                 return;
             }
 
-            const data = await response.json();
+            const data = await parseResponse(response);
 
+            /*
+             * ERREURS DE VALIDATION LARAVEL
+             */
             if (
                 response.status === 422 &&
+                !Array.isArray(data) &&
                 data.errors
             ) {
                 const validationErrors =
@@ -311,31 +422,47 @@ export default function ProductsPage() {
                         .join(" ");
 
                 throw new Error(
-                    String(validationErrors)
+                    validationErrors ||
+                        "Les données envoyées sont invalides."
                 );
             }
 
             if (!response.ok) {
+                const message =
+                    !Array.isArray(data)
+                        ? data.message
+                        : undefined;
+
                 throw new Error(
-                    data.message ||
+                    message ||
                         "Impossible d'enregistrer le produit."
                 );
             }
 
-            if (!data.product) {
+            /*
+             * VÉRIFIER QUE L'API RETOURNE
+             * LE PRODUIT
+             */
+            if (
+                Array.isArray(data) ||
+                !data.product
+            ) {
                 throw new Error(
                     "Laravel n'a pas retourné le produit."
                 );
             }
 
+            /*
+             * MODIFICATION
+             */
             if (isEditing) {
                 setProducts(
                     (currentProducts) =>
                         currentProducts.map(
                             (product) =>
                                 product.id ===
-                                editingProduct.id
-                                    ? data.product
+                                productBeingEdited.id
+                                    ? data.product!
                                     : product
                         )
                 );
@@ -344,9 +471,12 @@ export default function ProductsPage() {
                     "Produit modifié avec succès."
                 );
             } else {
+                /*
+                 * CRÉATION
+                 */
                 setProducts(
                     (currentProducts) => [
-                        data.product,
+                        data.product!,
                         ...currentProducts,
                     ]
                 );
@@ -376,9 +506,7 @@ export default function ProductsPage() {
     /*
      * MODIFIER UN PRODUIT
      */
-    const handleEdit = (
-        product: Product
-    ) => {
+    const handleEdit = (product: Product) => {
         setEditingProduct(product);
 
         setForm({
@@ -401,9 +529,7 @@ export default function ProductsPage() {
     /*
      * SUPPRIMER UN PRODUIT
      */
-    const handleDelete = async (
-        id: number
-    ) => {
+    const handleDelete = async (id: number) => {
         const token = getToken();
 
         if (!token) {
@@ -411,10 +537,9 @@ export default function ProductsPage() {
             return;
         }
 
-        const confirmed =
-            window.confirm(
-                "Voulez-vous vraiment supprimer ce produit ?"
-            );
+        const confirmed = window.confirm(
+            "Voulez-vous vraiment supprimer ce produit ?"
+        );
 
         if (!confirmed) {
             return;
@@ -441,16 +566,16 @@ export default function ProductsPage() {
                 return;
             }
 
-            const text =
-                await response.text();
-
-            const data = text
-                ? JSON.parse(text)
-                : {};
+            const data = await parseResponse(response);
 
             if (!response.ok) {
+                const message =
+                    !Array.isArray(data)
+                        ? data.message
+                        : undefined;
+
                 throw new Error(
-                    data.message ||
+                    message ||
                         "Impossible de supprimer le produit."
                 );
             }
@@ -463,9 +588,7 @@ export default function ProductsPage() {
                     )
             );
 
-            if (
-                editingProduct?.id === id
-            ) {
+            if (editingProduct?.id === id) {
                 resetForm();
             }
 
@@ -491,9 +614,7 @@ export default function ProductsPage() {
     /*
      * ACHETER UN PRODUIT
      */
-    const handleBuy = async (
-        product: Product
-    ) => {
+    const handleBuy = async (product: Product) => {
         const token = getToken();
 
         if (!token) {
@@ -501,6 +622,9 @@ export default function ProductsPage() {
             return;
         }
 
+        /*
+         * PROTECTION CONTRE LA RUPTURE DE STOCK
+         */
         if (product.stock <= 0) {
             setError(
                 "Ce produit est en rupture de stock."
@@ -508,18 +632,16 @@ export default function ProductsPage() {
             return;
         }
 
-        const quantityInput =
-            window.prompt(
-                `Combien voulez-vous acheter de "${product.name}" ?`,
-                "1"
-            );
+        const quantityInput = window.prompt(
+            `Combien voulez-vous acheter de "${product.name}" ?`,
+            "1"
+        );
 
         if (quantityInput === null) {
             return;
         }
 
-        const quantity =
-            Number(quantityInput);
+        const quantity = Number(quantityInput);
 
         if (
             !Number.isInteger(quantity) ||
@@ -555,7 +677,7 @@ export default function ProductsPage() {
                     },
                     body: JSON.stringify({
                         product_id: product.id,
-                        quantity: quantity,
+                        quantity,
                     }),
                 }
             );
@@ -565,27 +687,46 @@ export default function ProductsPage() {
                 return;
             }
 
-            const text =
-                await response.text();
-
-            const data = text
-                ? JSON.parse(text)
-                : {};
+            const data = await parseResponse(response);
 
             console.log(
                 "Réponse achat Laravel :",
                 data
             );
 
-            if (!response.ok) {
+            /*
+             * ERREURS DE VALIDATION
+             */
+            if (
+                response.status === 422 &&
+                !Array.isArray(data) &&
+                data.errors
+            ) {
+                const validationErrors =
+                    Object.values(data.errors)
+                        .flat()
+                        .join(" ");
+
                 throw new Error(
-                    data.message ||
+                    validationErrors ||
+                        "Les informations de l'achat sont invalides."
+                );
+            }
+
+            if (!response.ok) {
+                const message =
+                    !Array.isArray(data)
+                        ? data.message
+                        : undefined;
+
+                throw new Error(
+                    message ||
                         "Impossible d'effectuer l'achat."
                 );
             }
 
             /*
-             * METTRE À JOUR LE STOCK
+             * DIMINUER LE STOCK
              */
             setProducts(
                 (currentProducts) =>
@@ -604,13 +745,7 @@ export default function ProductsPage() {
             );
 
             /*
-             * NOUVELLE NOTIFICATION
-             *
-             * L'achat crée une notification
-             * côté Laravel.
-             *
-             * On augmente donc immédiatement
-             * le compteur.
+             * AUGMENTER LE COMPTEUR
              */
             setUnreadCount(
                 (currentCount) =>
@@ -644,7 +779,7 @@ export default function ProductsPage() {
         <main className="min-h-screen bg-black px-6 py-10 text-white">
             <div className="mx-auto max-w-6xl">
 
-                {/* TITRE + BOUTON NOTIFICATIONS */}
+                {/* TITRE + NOTIFICATIONS */}
                 <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-4xl font-bold">
@@ -656,12 +791,9 @@ export default function ProductsPage() {
                         </p>
                     </div>
 
-                    {/* BOUTON NOTIFICATIONS */}
                     <button
                         type="button"
-                        onClick={
-                            handleNotifications
-                        }
+                        onClick={handleNotifications}
                         className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
                     >
                         <span className="text-xl">
@@ -672,7 +804,6 @@ export default function ProductsPage() {
                             Notifications
                         </span>
 
-                        {/* COMPTEUR */}
                         {unreadCount > 0 && (
                             <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
                                 {unreadCount > 99
@@ -723,12 +854,11 @@ export default function ProductsPage() {
                                 name="name"
                                 type="text"
                                 value={form.name}
-                                onChange={
-                                    handleChange
-                                }
+                                onChange={handleChange}
                                 placeholder="Ordinateur HP"
                                 required
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                                disabled={saving}
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
 
@@ -744,16 +874,14 @@ export default function ProductsPage() {
                             <input
                                 id="price"
                                 name="price"
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
                                 value={form.price}
-                                onChange={
-                                    handleChange
-                                }
+                                onChange={handleChange}
                                 placeholder="500000"
                                 required
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                                disabled={saving}
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
 
@@ -769,16 +897,14 @@ export default function ProductsPage() {
                             <input
                                 id="stock"
                                 name="stock"
-                                type="number"
-                                min="0"
-                                step="1"
+                                type="text"
+                                inputMode="numeric"
                                 value={form.stock}
-                                onChange={
-                                    handleChange
-                                }
+                                onChange={handleChange}
                                 placeholder="10"
                                 required
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                                disabled={saving}
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
 
@@ -794,15 +920,12 @@ export default function ProductsPage() {
                             <textarea
                                 id="description"
                                 name="description"
-                                value={
-                                    form.description
-                                }
-                                onChange={
-                                    handleChange
-                                }
+                                value={form.description}
+                                onChange={handleChange}
                                 placeholder="Description du produit..."
                                 rows={4}
-                                className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                                disabled={saving}
+                                className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
 
@@ -823,11 +946,9 @@ export default function ProductsPage() {
                             {editingProduct && (
                                 <button
                                     type="button"
-                                    onClick={
-                                        resetForm
-                                    }
+                                    onClick={resetForm}
                                     disabled={saving}
-                                    className="rounded-lg bg-gray-700 px-6 py-3 font-semibold transition hover:bg-gray-600 disabled:opacity-50"
+                                    className="rounded-lg bg-gray-700 px-6 py-3 font-semibold transition hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     Annuler
                                 </button>
@@ -871,154 +992,133 @@ export default function ProductsPage() {
                         </div>
                     ) : (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                            {products.map(
-                                (product) => (
-                                    <article
-                                        key={
-                                            product.id
-                                        }
-                                        className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl"
-                                    >
-                                        <div className="mb-5 flex items-start justify-between gap-4">
-                                            <div>
-                                                <h3 className="text-xl font-bold">
-                                                    {
-                                                        product.name
-                                                    }
-                                                </h3>
+                            {products.map((product) => (
+                                <article
+                                    key={product.id}
+                                    className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl"
+                                >
+                                    {/* EN-TÊTE */}
+                                    <div className="mb-5 flex items-start justify-between gap-4">
+                                        <div>
+                                            <h3 className="text-xl font-bold">
+                                                {product.name}
+                                            </h3>
 
-                                                <p className="mt-1 text-sm text-gray-500">
-                                                    Produit #
-                                                    {
-                                                        product.id
-                                                    }
-                                                </p>
-                                            </div>
-
-                                            <span
-                                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                                    product.stock >
-                                                    0
-                                                        ? "bg-green-900/40 text-green-400"
-                                                        : "bg-red-900/40 text-red-400"
-                                                }`}
-                                            >
-                                                {product.stock >
-                                                0
-                                                    ? "En stock"
-                                                    : "Rupture"}
-                                            </span>
+                                            <p className="mt-1 text-sm text-gray-500">
+                                                Produit #{product.id}
+                                            </p>
                                         </div>
 
-                                        <p className="mb-5 min-h-12 text-sm text-gray-400">
-                                            {product.description ||
-                                                "Aucune description."}
-                                        </p>
+                                        <span
+                                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                                product.stock > 0
+                                                    ? "bg-green-900/40 text-green-400"
+                                                    : "bg-red-900/40 text-red-400"
+                                            }`}
+                                        >
+                                            {product.stock > 0
+                                                ? "En stock"
+                                                : "Rupture"}
+                                        </span>
+                                    </div>
 
-                                        <div className="mb-6 flex items-center justify-between">
-                                            <div>
-                                                <p className="text-sm text-gray-500">
-                                                    Prix
-                                                </p>
+                                    {/* DESCRIPTION */}
+                                    <p className="mb-5 min-h-12 text-sm text-gray-400">
+                                        {product.description ||
+                                            "Aucune description."}
+                                    </p>
 
-                                                <p className="text-xl font-bold text-blue-400">
-                                                    {Number(
-                                                        product.price
-                                                    ).toLocaleString(
-                                                        "fr-FR"
-                                                    )}{" "}
-                                                    FCFA
-                                                </p>
-                                            </div>
+                                    {/* PRIX + STOCK */}
+                                    <div className="mb-6 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm text-gray-500">
+                                                Prix
+                                            </p>
 
-                                            <div className="text-right">
-                                                <p className="text-sm text-gray-500">
-                                                    Stock
-                                                </p>
-
-                                                <p className="text-lg font-semibold">
-                                                    {
-                                                        product.stock
-                                                    }
-                                                </p>
-                                            </div>
+                                            <p className="text-xl font-bold text-blue-400">
+                                                {Number(
+                                                    product.price
+                                                ).toLocaleString(
+                                                    "fr-FR"
+                                                )}{" "}
+                                                FCFA
+                                            </p>
                                         </div>
 
-                                        {/* ACTIONS */}
-                                        <div className="flex flex-col gap-3">
-                                            <div className="flex gap-3">
-                                                {/* MODIFIER */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleEdit(
-                                                            product
-                                                        )
-                                                    }
-                                                    disabled={
-                                                        deleting !==
-                                                            null ||
-                                                        buying !==
-                                                            null
-                                                    }
-                                                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:opacity-50"
-                                                >
-                                                    Modifier
-                                                </button>
+                                        <div className="text-right">
+                                            <p className="text-sm text-gray-500">
+                                                Stock
+                                            </p>
 
-                                                {/* SUPPRIMER */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDelete(
-                                                            product.id
-                                                        )
-                                                    }
-                                                    disabled={
-                                                        deleting ===
-                                                            product.id ||
-                                                        buying !==
-                                                            null
-                                                    }
-                                                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                    {deleting ===
-                                                    product.id
-                                                        ? "Suppression..."
-                                                        : "Supprimer"}
-                                                </button>
-                                            </div>
+                                            <p className="text-lg font-semibold">
+                                                {product.stock}
+                                            </p>
+                                        </div>
+                                    </div>
 
-                                            {/* ACHETER */}
+                                    {/* ACTIONS */}
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex gap-3">
                                             <button
                                                 type="button"
                                                 onClick={() =>
-                                                    handleBuy(
+                                                    handleEdit(
                                                         product
                                                     )
                                                 }
                                                 disabled={
-                                                    product.stock <=
-                                                        0 ||
-                                                    buying ===
-                                                        product.id ||
                                                     deleting !==
+                                                        null ||
+                                                    buying !==
                                                         null
                                                 }
-                                                className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                             >
-                                                {buying ===
+                                                Modifier
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    handleDelete(
+                                                        product.id
+                                                    )
+                                                }
+                                                disabled={
+                                                    deleting ===
+                                                        product.id ||
+                                                    buying !==
+                                                        null
+                                                }
+                                                className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                {deleting ===
                                                 product.id
-                                                    ? "Achat en cours..."
-                                                    : product.stock <=
-                                                        0
-                                                      ? "Rupture de stock"
-                                                      : "Acheter"}
+                                                    ? "Suppression..."
+                                                    : "Supprimer"}
                                             </button>
                                         </div>
-                                    </article>
-                                )
-                            )}
+
+                                        {/* ACHETER */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleBuy(product)}
+                                            disabled={
+                                                product.stock <= 0 ||
+                                                buying === product.id ||
+                                                deleting !== null
+                                            }
+                                            className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {buying === product.id
+                                                ? "Achat en cours..."
+                                                : product.stock <= 0
+                                                ? "Rupture de stock"
+                                                : "Acheter"}
+                                        </button>
+                                    </div>
+                                </article>
+                            ))}
                         </div>
                     )}
                 </section>
