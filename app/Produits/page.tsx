@@ -26,6 +26,13 @@ interface ProductForm {
     stock: string;
 }
 
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    role?: string;
+}
+
 interface ApiObjectResponse {
     message?: string;
     product?: Product;
@@ -52,8 +59,10 @@ export default function ProductsPage() {
     const [deleting, setDeleting] = useState<number | null>(null);
     const [buying, setBuying] = useState<number | null>(null);
 
-    const [unreadCount, setUnreadCount] = useState(0);
+    const [user, setUser] = useState<User | null>(null);
+    const [checkingAuth, setCheckingAuth] = useState(true);
 
+    const [unreadCount, setUnreadCount] = useState(0);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -79,6 +88,20 @@ export default function ProductsPage() {
     };
 
     /*
+     * VÉRIFICATION DE L'AUTHENTIFICATION
+     */
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            router.replace("/");
+            return;
+        }
+
+        setCheckingAuth(false);
+    }, [router]);
+
+    /*
      * DÉCONNEXION FORCÉE
      */
     const forceLogout = useCallback(() => {
@@ -87,8 +110,27 @@ export default function ProductsPage() {
             localStorage.removeItem("user");
         }
 
-        router.push("/");
+        router.replace("/");
     }, [router]);
+
+    /*
+     * RÉCUPÉRER L'UTILISATEUR
+     */
+    useEffect(() => {
+        const storedUser = localStorage.getItem("user");
+
+        if (storedUser) {
+            try {
+                const parsedUser = JSON.parse(storedUser);
+                setUser(parsedUser);
+            } catch (error) {
+                console.error(
+                    "Impossible de récupérer l'utilisateur :",
+                    error
+                );
+            }
+        }
+    }, []);
 
     /*
      * RÉINITIALISER LE FORMULAIRE
@@ -189,6 +231,8 @@ export default function ProductsPage() {
 
     /*
      * RÉCUPÉRER LES PRODUITS
+     *
+     * ADMIN ET CLIENT PEUVENT VOIR LES PRODUITS.
      */
     const fetchProducts = useCallback(async () => {
         const token = getToken();
@@ -268,9 +312,14 @@ export default function ProductsPage() {
      * CHARGEMENT INITIAL
      */
     useEffect(() => {
+        if (checkingAuth) {
+            return;
+        }
+
         fetchProducts();
         fetchUnreadNotifications();
     }, [
+        checkingAuth,
         fetchProducts,
         fetchUnreadNotifications,
     ]);
@@ -312,6 +361,7 @@ export default function ProductsPage() {
 
         try {
             const productBeingEdited = editingProduct;
+
             const isEditing =
                 productBeingEdited !== null;
 
@@ -326,7 +376,6 @@ export default function ProductsPage() {
             const name = form.name.trim();
             const description =
                 form.description.trim();
-
             const priceValue = form.price.trim();
             const stockValue = form.stock.trim();
 
@@ -439,10 +488,6 @@ export default function ProductsPage() {
                 );
             }
 
-            /*
-             * VÉRIFIER QUE L'API RETOURNE
-             * LE PRODUIT
-             */
             if (
                 Array.isArray(data) ||
                 !data.product
@@ -613,6 +658,8 @@ export default function ProductsPage() {
 
     /*
      * ACHETER UN PRODUIT
+     *
+     * ADMIN ET CLIENT PEUVENT ACHETER.
      */
     const handleBuy = async (product: Product) => {
         const token = getToken();
@@ -775,6 +822,19 @@ export default function ProductsPage() {
         }
     };
 
+    /*
+     * PENDANT LA VÉRIFICATION DU TOKEN
+     */
+    if (checkingAuth) {
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-black text-white">
+                <p className="text-gray-400">
+                    Vérification de la connexion...
+                </p>
+            </main>
+        );
+    }
+
     return (
         <main className="min-h-screen bg-black px-6 py-10 text-white">
             <div className="mx-auto max-w-6xl">
@@ -828,134 +888,136 @@ export default function ProductsPage() {
                     </div>
                 )}
 
-                {/* FORMULAIRE */}
-                <section className="mb-10 rounded-2xl border border-gray-800 bg-gray-900 p-6">
-                    <h2 className="mb-6 text-2xl font-semibold">
-                        {editingProduct
-                            ? "Modifier le produit"
-                            : "Ajouter un produit"}
-                    </h2>
+                {/* FORMULAIRE ADMIN UNIQUEMENT */}
+                {user?.role === "admin" && (
+                    <section className="mb-10 rounded-2xl border border-gray-800 bg-gray-900 p-6">
+                        <h2 className="mb-6 text-2xl font-semibold">
+                            {editingProduct
+                                ? "Modifier le produit"
+                                : "Ajouter un produit"}
+                        </h2>
 
-                    <form
-                        onSubmit={handleSubmit}
-                        className="grid gap-5 md:grid-cols-2"
-                    >
-                        {/* NOM */}
-                        <div>
-                            <label
-                                htmlFor="name"
-                                className="mb-2 block text-sm font-medium text-gray-300"
-                            >
-                                Nom du produit
-                            </label>
-
-                            <input
-                                id="name"
-                                name="name"
-                                type="text"
-                                value={form.name}
-                                onChange={handleChange}
-                                placeholder="Ordinateur HP"
-                                required
-                                disabled={saving}
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                        </div>
-
-                        {/* PRIX */}
-                        <div>
-                            <label
-                                htmlFor="price"
-                                className="mb-2 block text-sm font-medium text-gray-300"
-                            >
-                                Prix
-                            </label>
-
-                            <input
-                                id="price"
-                                name="price"
-                                type="text"
-                                inputMode="decimal"
-                                value={form.price}
-                                onChange={handleChange}
-                                placeholder="500000"
-                                required
-                                disabled={saving}
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                        </div>
-
-                        {/* STOCK */}
-                        <div>
-                            <label
-                                htmlFor="stock"
-                                className="mb-2 block text-sm font-medium text-gray-300"
-                            >
-                                Stock
-                            </label>
-
-                            <input
-                                id="stock"
-                                name="stock"
-                                type="text"
-                                inputMode="numeric"
-                                value={form.stock}
-                                onChange={handleChange}
-                                placeholder="10"
-                                required
-                                disabled={saving}
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                        </div>
-
-                        {/* DESCRIPTION */}
-                        <div className="md:col-span-2">
-                            <label
-                                htmlFor="description"
-                                className="mb-2 block text-sm font-medium text-gray-300"
-                            >
-                                Description
-                            </label>
-
-                            <textarea
-                                id="description"
-                                name="description"
-                                value={form.description}
-                                onChange={handleChange}
-                                placeholder="Description du produit..."
-                                rows={4}
-                                disabled={saving}
-                                className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                        </div>
-
-                        {/* BOUTONS */}
-                        <div className="flex gap-3 md:col-span-2">
-                            <button
-                                type="submit"
-                                disabled={saving}
-                                className="rounded-lg bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                {saving
-                                    ? "Enregistrement..."
-                                    : editingProduct
-                                      ? "Modifier le produit"
-                                      : "Ajouter le produit"}
-                            </button>
-
-                            {editingProduct && (
-                                <button
-                                    type="button"
-                                    onClick={resetForm}
-                                    disabled={saving}
-                                    className="rounded-lg bg-gray-700 px-6 py-3 font-semibold transition hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        <form
+                            onSubmit={handleSubmit}
+                            className="grid gap-5 md:grid-cols-2"
+                        >
+                            {/* NOM */}
+                            <div>
+                                <label
+                                    htmlFor="name"
+                                    className="mb-2 block text-sm font-medium text-gray-300"
                                 >
-                                    Annuler
+                                    Nom du produit
+                                </label>
+
+                                <input
+                                    id="name"
+                                    name="name"
+                                    type="text"
+                                    value={form.name}
+                                    onChange={handleChange}
+                                    placeholder="Ordinateur HP"
+                                    required
+                                    disabled={saving}
+                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                            </div>
+
+                            {/* PRIX */}
+                            <div>
+                                <label
+                                    htmlFor="price"
+                                    className="mb-2 block text-sm font-medium text-gray-300"
+                                >
+                                    Prix
+                                </label>
+
+                                <input
+                                    id="price"
+                                    name="price"
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={form.price}
+                                    onChange={handleChange}
+                                    placeholder="500000"
+                                    required
+                                    disabled={saving}
+                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                            </div>
+
+                            {/* STOCK */}
+                            <div>
+                                <label
+                                    htmlFor="stock"
+                                    className="mb-2 block text-sm font-medium text-gray-300"
+                                >
+                                    Stock
+                                </label>
+
+                                <input
+                                    id="stock"
+                                    name="stock"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={form.stock}
+                                    onChange={handleChange}
+                                    placeholder="10"
+                                    required
+                                    disabled={saving}
+                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                            </div>
+
+                            {/* DESCRIPTION */}
+                            <div className="md:col-span-2">
+                                <label
+                                    htmlFor="description"
+                                    className="mb-2 block text-sm font-medium text-gray-300"
+                                >
+                                    Description
+                                </label>
+
+                                <textarea
+                                    id="description"
+                                    name="description"
+                                    value={form.description}
+                                    onChange={handleChange}
+                                    placeholder="Description du produit..."
+                                    rows={4}
+                                    disabled={saving}
+                                    className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                            </div>
+
+                            {/* BOUTONS DU FORMULAIRE */}
+                            <div className="flex gap-3 md:col-span-2">
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="rounded-lg bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {saving
+                                        ? "Enregistrement..."
+                                        : editingProduct
+                                          ? "Modifier le produit"
+                                          : "Ajouter le produit"}
                                 </button>
-                            )}
-                        </div>
-                    </form>
-                </section>
+
+                                {editingProduct && (
+                                    <button
+                                        type="button"
+                                        onClick={resetForm}
+                                        disabled={saving}
+                                        className="rounded-lg bg-gray-700 px-6 py-3 font-semibold transition hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Annuler
+                                    </button>
+                                )}
+                            </div>
+                        </form>
+                    </section>
+                )}
 
                 {/* LISTE DES PRODUITS */}
                 <section>
@@ -1058,64 +1120,69 @@ export default function ProductsPage() {
 
                                     {/* ACTIONS */}
                                     <div className="flex flex-col gap-3">
-                                        <div className="flex gap-3">
+
+                                        {/* BOUTONS ADMIN */}
+                                        {user?.role === "admin" && (
+                                            <div className="flex gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleEdit(product)
+                                                    }
+                                                    disabled={
+                                                        deleting !== null ||
+                                                        buying !== null
+                                                    }
+                                                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    Modifier
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleDelete(
+                                                            product.id
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        deleting ===
+                                                            product.id ||
+                                                        buying !== null
+                                                    }
+                                                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {deleting ===
+                                                    product.id
+                                                        ? "Suppression..."
+                                                        : "Supprimer"}
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* BOUTON ACHETER :
+                                            ADMIN + CLIENT */}
+                                        {(user?.role === "admin" ||
+                                            user?.role === "client") && (
                                             <button
                                                 type="button"
                                                 onClick={() =>
-                                                    handleEdit(
-                                                        product
-                                                    )
+                                                    handleBuy(product)
                                                 }
                                                 disabled={
-                                                    deleting !==
-                                                        null ||
-                                                    buying !==
-                                                        null
+                                                    product.stock <= 0 ||
+                                                    buying === product.id ||
+                                                    deleting !== null
                                                 }
-                                                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
                                             >
-                                                Modifier
+                                                {buying === product.id
+                                                    ? "Achat en cours..."
+                                                    : product.stock <= 0
+                                                      ? "Rupture de stock"
+                                                      : "Acheter"}
                                             </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    handleDelete(
-                                                        product.id
-                                                    )
-                                                }
-                                                disabled={
-                                                    deleting ===
-                                                        product.id ||
-                                                    buying !==
-                                                        null
-                                                }
-                                                className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                            >
-                                                {deleting ===
-                                                product.id
-                                                    ? "Suppression..."
-                                                    : "Supprimer"}
-                                            </button>
-                                        </div>
-
-                                        {/* ACHETER */}
-                                        <button
-                                            type="button"
-                                            onClick={() => handleBuy(product)}
-                                            disabled={
-                                                product.stock <= 0 ||
-                                                buying === product.id ||
-                                                deleting !== null
-                                            }
-                                            className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                        >
-                                            {buying === product.id
-                                                ? "Achat en cours..."
-                                                : product.stock <= 0
-                                                ? "Rupture de stock"
-                                                : "Acheter"}
-                                        </button>
+                                        )}
                                     </div>
                                 </article>
                             ))}

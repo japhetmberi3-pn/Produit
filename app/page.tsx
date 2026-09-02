@@ -1,22 +1,31 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import {
+    FormEvent,
+    useEffect,
+    useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 interface User {
     id: number;
     name: string;
     email: string;
+    role?: string;
 }
 
-interface RegisterResponse {
+interface AuthResponse {
     message: string;
     user: User;
     token: string;
 }
 
-export default function RegisterPage() {
+export default function AuthPage() {
     const router = useRouter();
+
+    const [mode, setMode] = useState<
+        "login" | "register"
+    >("login");
 
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -26,7 +35,28 @@ export default function RegisterPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
-    const handleRegister = async (
+    // Vérifier si l'utilisateur est connecté
+    const [isLoggedIn, setIsLoggedIn] =
+        useState(false);
+
+    useEffect(() => {
+        const token =
+            localStorage.getItem("token");
+
+        setIsLoggedIn(!!token);
+    }, []);
+
+    // DÉCONNEXION
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        setIsLoggedIn(false);
+        setSuccess("Vous êtes déconnecté.");
+        setError("");
+    };
+
+    const handleSubmit = async (
         event: FormEvent<HTMLFormElement>
     ) => {
         event.preventDefault();
@@ -36,131 +66,120 @@ export default function RegisterPage() {
         setLoading(true);
 
         try {
-            /*
-             * Données envoyées à Laravel
-             */
-            const userData = {
-                name: name.trim(),
-                email: email.trim(),
-                password: password,
-            };
+            const endpoint =
+                mode === "login"
+                    ? "http://127.0.0.1:8000/api/login"
+                    : "http://127.0.0.1:8000/api/register";
 
-            console.log(
-                "Données envoyées à Laravel :",
-                userData
-            );
+            const userData =
+                mode === "login"
+                    ? {
+                          email: email.trim(),
+                          password,
+                      }
+                    : {
+                          name: name.trim(),
+                          email: email.trim(),
+                          password,
+                      };
 
-            /*
-             * Appel de l'API Laravel
-             */
             const response = await fetch(
-                "http://127.0.0.1:8000/api/register",
+                endpoint,
                 {
                     method: "POST",
                     headers: {
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
+                        Accept:
+                            "application/json",
+                            "Content-Type":
+                            "application/json",
                     },
-                    body: JSON.stringify(userData),
+                    body: JSON.stringify(
+                        userData
+                    ),
                 }
             );
 
-            console.log(
-                "Status Laravel :",
-                response.status
-            );
+            const data =
+                await response.json();
 
-            const data = await response.json();
-
-            console.log(
-                "Réponse Laravel :",
-                data
-            );
-
-            /*
-             * Laravel retourne une erreur
-             */
             if (!response.ok) {
                 if (data.errors) {
-                    const firstError = Object.values(
-                        data.errors
-                    )[0];
+                    const firstError =
+                        Object.values(
+                            data.errors
+                        )[0];
 
-                    if (Array.isArray(firstError)) {
+                    if (
+                        Array.isArray(
+                            firstError
+                        )
+                    ) {
                         throw new Error(
-                            String(firstError[0])
+                            String(
+                                firstError[0]
+                            )
                         );
                     }
                 }
 
                 throw new Error(
                     data.message ||
-                        "Impossible de créer le compte."
+                        "Une erreur est survenue."
                 );
             }
 
-            /*
-             * Vérifier que Laravel a bien créé
-             * l'utilisateur et retourné le token
-             */
-            const registerData =
-                data as RegisterResponse;
+            const authData =
+                data as AuthResponse;
 
             if (
-                !registerData.user ||
-                !registerData.token
+                !authData.user ||
+                !authData.token
             ) {
                 throw new Error(
                     "Laravel n'a pas retourné l'utilisateur ou le token."
                 );
             }
 
-            /*
-             * Sauvegarder le token Sanctum
-             */
+            // Sauvegarder le token Sanctum
             localStorage.setItem(
                 "token",
-                registerData.token
+                authData.token
             );
 
-            /*
-             * Sauvegarder l'utilisateur connecté
-             */
+            // Sauvegarder l'utilisateur
             localStorage.setItem(
                 "user",
-                JSON.stringify(registerData.user)
+                JSON.stringify(
+                    authData.user
+                )
             );
 
-            console.log(
-                "Utilisateur créé :",
-                registerData.user
-            );
+            // L'utilisateur est maintenant connecté
+            setIsLoggedIn(true);
 
-            console.log(
-                "Token sauvegardé :",
-                registerData.token
-            );
+            if (mode === "login") {
+                setSuccess(
+                    "Connexion réussie !"
+                );
 
-            setSuccess(
-                "Compte créé avec succès !"
-            );
+                setEmail("");
+                setPassword("");
 
-            /*
-             * Nettoyer le formulaire
-             */
-            setName("");
-            setEmail("");
-            setPassword("");
+                router.push("/Produits");
+            } else {
+                setSuccess(
+                    "Compte créé avec succès !"
+                );
 
-            /*
-             * IMPORTANT :
-             * Redirection uniquement après que Laravel
-             * ait confirmé la création du compte.
-             */
-            router.push("/Produits");
+                setName("");
+                setEmail("");
+                setPassword("");
+
+                router.push("/Produits");
+            }
         } catch (err) {
             console.error(
-                "Erreur inscription :",
+                "Erreur authentification :",
                 err
             );
 
@@ -176,9 +195,35 @@ export default function RegisterPage() {
         }
     };
 
+    const changeMode = (
+        newMode:
+            | "login"
+            | "register"
+    ) => {
+        setMode(newMode);
+        setError("");
+        setSuccess("");
+    };
+
     return (
         <main className="min-h-screen bg-black text-white">
-            <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-12">
+
+            {/* BARRE DU HAUT */}
+            <div className="flex justify-end px-6 py-4">
+                {isLoggedIn && (
+                    <button
+                        type="button"
+                        onClick={
+                            handleLogout
+                        }
+                        className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white transition hover:bg-red-700"
+                    >
+                        Déconnexion
+                    </button>
+                )}
+            </div>
+
+            <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-6xl items-center justify-center px-6 py-12">
                 <div className="w-full max-w-md">
 
                     {/* TITRE */}
@@ -188,17 +233,60 @@ export default function RegisterPage() {
                         </h1>
 
                         <p className="mt-2 text-gray-400">
-                            Créez votre compte
+                            Bienvenue sur ShopX
                         </p>
+                    </div>
+
+                    {/* BOUTONS CONNEXION / INSCRIPTION */}
+                    <div className="mb-6 grid grid-cols-2 gap-2 rounded-xl bg-gray-900 p-2">
+
+                        <button
+                            type="button"
+                            onClick={() =>
+                                changeMode(
+                                    "login"
+                                )
+                            }
+                            className={`rounded-lg px-4 py-3 font-semibold transition ${
+                                mode ===
+                                "login"
+                                    ? "bg-blue-600 text-white"
+                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                            }`}
+                        >
+                            Connexion
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() =>
+                                changeMode(
+                                    "register"
+                                )
+                            }
+                            className={`rounded-lg px-4 py-3 font-semibold transition ${
+                                mode ===
+                                "register"
+                                    ? "bg-blue-600 text-white"
+                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                            }`}
+                        >
+                            Inscription
+                        </button>
                     </div>
 
                     {/* FORMULAIRE */}
                     <form
-                        onSubmit={handleRegister}
+                        onSubmit={
+                            handleSubmit
+                        }
                         className="rounded-2xl border border-gray-800 bg-gray-900 p-8 shadow-2xl"
                     >
                         <h2 className="mb-6 text-2xl font-semibold">
-                            Inscription
+                            {mode ===
+                            "login"
+                                ? "Connexion"
+                                : "Inscription"}
                         </h2>
 
                         {/* ERREUR */}
@@ -216,29 +304,38 @@ export default function RegisterPage() {
                         )}
 
                         {/* NOM */}
-                        <div className="mb-5">
-                            <label
-                                htmlFor="name"
-                                className="mb-2 block text-sm font-medium text-gray-300"
-                            >
-                                Nom
-                            </label>
+                        {mode ===
+                            "register" && (
+                            <div className="mb-5">
+                                <label
+                                    htmlFor="name"
+                                    className="mb-2 block text-sm font-medium text-gray-300"
+                                >
+                                    Nom
+                                </label>
 
-                            <input
-                                id="name"
-                                type="text"
-                                value={name}
-                                onChange={(event) =>
-                                    setName(
-                                        event.target.value
-                                    )
-                                }
-                                placeholder="Votre nom"
-                                autoComplete="name"
-                                required
-                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
-                            />
-                        </div>
+                                <input
+                                    id="name"
+                                    type="text"
+                                    value={
+                                        name
+                                    }
+                                    onChange={(
+                                        event
+                                    ) =>
+                                        setName(
+                                            event
+                                                .target
+                                                .value
+                                        )
+                                    }
+                                    placeholder="Votre nom"
+                                    autoComplete="name"
+                                    required
+                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+                                />
+                            </div>
+                        )}
 
                         {/* EMAIL */}
                         <div className="mb-5">
@@ -252,10 +349,16 @@ export default function RegisterPage() {
                             <input
                                 id="email"
                                 type="email"
-                                value={email}
-                                onChange={(event) =>
+                                value={
+                                    email
+                                }
+                                onChange={(
+                                    event
+                                ) =>
                                     setEmail(
-                                        event.target.value
+                                        event
+                                            .target
+                                            .value
                                     )
                                 }
                                 placeholder="japhet@example.com"
@@ -277,14 +380,25 @@ export default function RegisterPage() {
                             <input
                                 id="password"
                                 type="password"
-                                value={password}
-                                onChange={(event) =>
+                                value={
+                                    password
+                                }
+                                onChange={(
+                                    event
+                                ) =>
                                     setPassword(
-                                        event.target.value
+                                        event
+                                            .target
+                                            .value
                                     )
                                 }
-                                placeholder="Minimum 8 caractères"
-                                autoComplete="new-password"
+                                placeholder="Votre mot de passe"
+                                autoComplete={
+                                    mode ===
+                                    "login"
+                                        ? "current-password"
+                                        : "new-password"
+                                }
                                 minLength={8}
                                 required
                                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
@@ -294,14 +408,45 @@ export default function RegisterPage() {
                         {/* BOUTON */}
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={
+                                loading
+                            }
                             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {loading
-                                ? "Création du compte..."
+                                ? "Chargement..."
+                                : mode ===
+                                  "login"
+                                ? "Se connecter"
                                 : "Créer mon compte"}
                         </button>
                     </form>
+
+                    {/* TEXTE EN BAS */}
+                    <p className="mt-6 text-center text-sm text-gray-400">
+                        {mode ===
+                        "login"
+                            ? "Vous n'avez pas encore de compte ? "
+                            : "Vous avez déjà un compte ? "}
+
+                        <button
+                            type="button"
+                            onClick={() =>
+                                changeMode(
+                                    mode ===
+                                    "login"
+                                        ? "register"
+                                        : "login"
+                                )
+                            }
+                            className="font-semibold text-blue-500 hover:text-blue-400"
+                        >
+                            {mode ===
+                            "login"
+                                ? "Inscrivez-vous"
+                                : "Connectez-vous"}
+                        </button>
+                    </p>
                 </div>
             </div>
         </main>
