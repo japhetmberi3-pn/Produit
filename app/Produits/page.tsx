@@ -69,6 +69,10 @@ export default function ProductsPage() {
     const [editingProduct, setEditingProduct] =
         useState<Product | null>(null);
 
+    const pushMessageries = () => {
+        router.push("/Messageries");
+        };
+
     const [form, setForm] = useState<ProductForm>({
         name: "",
         description: "",
@@ -851,6 +855,17 @@ export default function ProductsPage() {
                         </p>
                     </div>
 
+
+                   <div className="flex gap-3">
+
+                     <button
+                        type="button"
+                        onClick={pushMessageries}
+                        className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
+                    >
+                        💬 Messageries
+                    </button>
+
                     <button
                         type="button"
                         onClick={handleNotifications}
@@ -872,6 +887,7 @@ export default function ProductsPage() {
                             </span>
                         )}
                     </button>
+                   </div>
                 </div>
 
                 {/* ERREUR */}

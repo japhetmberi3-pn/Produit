@@ -1,151 +1,1092 @@
 "use client";
 
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent,
+} from "react";
+
+import echo from "@/lib/echo";
+
+interface User {
+  id: number;
+  name: string;
+  email?: string;
+  role?: string;
+  is_online?: boolean;
+}
+
+interface Message {
+  id: number;
+  conversation_id: number;
+  sender_id: number;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+  sender?: User;
+}
+
+interface Conversation {
+  id: number;
+  user_id: number;
+  admin_id: number;
+  user?: User;
+  admin?: User;
+  messages?: Message[];
+  unread_count?: number;
+}
+
 export default function MessageriesPage() {
+  const [conversations, setConversations] = useState<
+    Conversation[]
+  >([]);
+
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null);
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [creatingConversation, setCreatingConversation] =
+    useState(false);
+
+  const [currentUserId, setCurrentUserId] =
+    useState<number | null>(null);
+
+  const [admins, setAdmins] = useState<User[]>([]);
+  const [showAdminList, setShowAdminList] =
+    useState(false);
+
+  const [onlineUsers, setOnlineUsers] =
+    useState<User[]>([]);
+
+  /*
+   * Récupérer l'utilisateur connecté
+   */
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(user);
+
+      if (parsedUser?.id) {
+        setCurrentUserId(parsedUser.id);
+      }
+    } catch (error) {
+      console.error(
+        "Impossible de récupérer l'utilisateur connecté :",
+        error
+      );
+    }
+  }, []);
+
+  /*
+   * Récupérer les conversations
+   */
+  const fetchConversations = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/conversations",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Erreur conversations : ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      setConversations(
+        Array.isArray(data) ? data : []
+      );
+    } catch (error) {
+      console.error(
+        "Erreur récupération conversations :",
+        error
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * Charger les conversations au démarrage
+   */
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  /*
+   * Récupérer les administrateurs
+   */
+  const fetchAdmins = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/admins",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Erreur récupération administrateurs : ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      const adminUsers: User[] = Array.isArray(data)
+        ? data
+        : [];
+
+      setAdmins(
+        adminUsers.filter(
+          (admin) => admin.id !== currentUserId
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Erreur récupération administrateurs :",
+        error
+      );
+    }
+  };
+
+  /*
+   * Ouvrir la fenêtre de création
+   */
+  const handleNewConversation = async () => {
+    setShowAdminList(true);
+
+    await fetchAdmins();
+  };
+
+  /*
+   * Créer une conversation avec un admin
+   */
+  const handleCreateConversation = async (
+    admin: User
+  ) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    setCreatingConversation(true);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/conversations",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            admin_id: admin.id,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            `Erreur création conversation : ${response.status}`
+        );
+      }
+
+      const newConversation: Conversation =
+        data.conversation;
+
+      if (!newConversation?.id) {
+        throw new Error(
+          "Le serveur n'a pas retourné de conversation valide."
+        );
+      }
+
+      /*
+       * Récupérer la conversation complète
+       */
+      const conversationResponse = await fetch(
+        `http://127.0.0.1:8000/api/conversations/${newConversation.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (conversationResponse.ok) {
+        const completeConversation =
+          await conversationResponse.json();
+
+        setConversations(
+          (currentConversations) => {
+            const alreadyExists =
+              currentConversations.some(
+                (conversation) =>
+                  conversation.id ===
+                  completeConversation.id
+              );
+
+            if (alreadyExists) {
+              return currentConversations.map(
+                (conversation) =>
+                  conversation.id ===
+                  completeConversation.id
+                    ? completeConversation
+                    : conversation
+              );
+            }
+
+            return [
+              completeConversation,
+              ...currentConversations,
+            ];
+          }
+        );
+
+        setSelectedConversation(
+          completeConversation
+        );
+      } else {
+        const conversationWithAdmin: Conversation = {
+          ...newConversation,
+          admin,
+        };
+
+        setConversations(
+          (currentConversations) => [
+            conversationWithAdmin,
+            ...currentConversations,
+          ]
+        );
+
+        setSelectedConversation(
+          conversationWithAdmin
+        );
+      }
+
+      setShowAdminList(false);
+    } catch (error) {
+      console.error(
+        "Erreur création conversation :",
+        error
+      );
+    } finally {
+      setCreatingConversation(false);
+    }
+  };
+
+  /*
+   * Récupérer les messages de la conversation sélectionnée
+   */
+  useEffect(() => {
+    if (!selectedConversation) {
+      setMessages([]);
+      return;
+    }
+
+    const fetchMessages = async () => {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:8000/api/conversations/${selectedConversation.id}/messages`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Erreur messages : ${response.status}`
+          );
+        }
+
+        const data = await response.json();
+
+        setMessages(
+          Array.isArray(data) ? data : []
+        );
+      } catch (error) {
+        console.error(
+          "Erreur récupération messages :",
+          error
+        );
+      }
+    };
+
+    fetchMessages();
+  }, [selectedConversation]);
+
+  /*
+   * Echo + présence + temps réel
+   */
+  useEffect(() => {
+    if (!echo) {
+      return;
+    }
+
+    const echoInstance = echo;
+
+    const presenceChannel =
+      echoInstance.join("presence.chat");
+
+    presenceChannel.here((users: User[]) => {
+      setOnlineUsers(users);
+    });
+
+    presenceChannel.joining((user: User) => {
+      setOnlineUsers((currentUsers) => {
+        if (
+          currentUsers.some(
+            (currentUser) =>
+              currentUser.id === user.id
+          )
+        ) {
+          return currentUsers;
+        }
+
+        return [...currentUsers, user];
+      });
+    });
+
+    presenceChannel.leaving((user: User) => {
+      setOnlineUsers((currentUsers) =>
+        currentUsers.filter(
+          (currentUser) =>
+            currentUser.id !== user.id
+        )
+      );
+    });
+
+    let privateChannel:
+      | ReturnType<typeof echoInstance.private>
+      | null = null;
+
+    if (selectedConversation) {
+      privateChannel = echoInstance
+        .private(
+          `conversation.${selectedConversation.id}`
+        )
+        .listen(
+          ".message.sent",
+          (data: Message) => {
+            setMessages((currentMessages) => {
+              if (
+                currentMessages.some(
+                  (message) =>
+                    message.id === data.id
+                )
+              ) {
+                return currentMessages;
+              }
+
+              return [...currentMessages, data];
+            });
+          }
+        )
+        .listen(
+          ".message.read",
+          (data: {
+            id: number;
+            conversation_id: number;
+            read_at: string | null;
+          }) => {
+            setMessages((currentMessages) =>
+              currentMessages.map((message) =>
+                message.id === data.id
+                  ? {
+                      ...message,
+                      read_at: data.read_at,
+                    }
+                  : message
+              )
+            );
+          }
+        )
+        .listen(
+          ".message.deleted",
+          (data: {
+            id: number;
+            conversation_id: number;
+          }) => {
+            setMessages((currentMessages) =>
+              currentMessages.filter(
+                (message) =>
+                  message.id !== data.id
+              )
+            );
+          }
+        );
+    }
+
+    return () => {
+      if (selectedConversation) {
+        echoInstance.leave(
+          `conversation.${selectedConversation.id}`
+        );
+      }
+
+      echoInstance.leave("presence.chat");
+    };
+  }, [selectedConversation]);
+
+  /*
+   * Envoyer un message
+   */
+  const handleSendMessage = async () => {
+    if (!selectedConversation) {
+      return;
+    }
+
+    const trimmedMessage =
+      newMessage.trim();
+
+    if (!trimmedMessage) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/conversations/${selectedConversation.id}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: trimmedMessage,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData =
+          await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.message ||
+            `Erreur envoi message : ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      if (data.data) {
+        setMessages((currentMessages) => {
+          if (
+            currentMessages.some(
+              (message) =>
+                message.id === data.data.id
+            )
+          ) {
+            return currentMessages;
+          }
+
+          return [
+            ...currentMessages,
+            data.data,
+          ];
+        });
+      }
+
+      setNewMessage("");
+    } catch (error) {
+      console.error(
+        "Erreur envoi message :",
+        error
+      );
+    }
+  };
+
+  /*
+   * Entrée
+   */
+  const handleKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  /*
+   * Marquer comme lu
+   */
+  const handleMarkAsRead = async (
+    message: Message
+  ) => {
+    if (!currentUserId) {
+      return;
+    }
+
+    if (message.sender_id === currentUserId) {
+      return;
+    }
+
+    if (message.read_at) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/messages/${message.id}/read`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Erreur marquage message : ${response.status}`
+        );
+      }
+
+      setMessages((currentMessages) =>
+        currentMessages.map(
+          (currentMessage) =>
+            currentMessage.id === message.id
+              ? {
+                  ...currentMessage,
+                  read_at:
+                    new Date().toISOString(),
+                }
+              : currentMessage
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Erreur message lu :",
+        error
+      );
+    }
+  };
+
+  /*
+   * Supprimer un message
+   */
+  const handleDeleteMessage = async (
+    message: Message
+  ) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/messages/${message.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData =
+          await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.message ||
+            `Erreur suppression : ${response.status}`
+        );
+      }
+
+      setMessages((currentMessages) =>
+        currentMessages.filter(
+          (currentMessage) =>
+            currentMessage.id !== message.id
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Erreur suppression message :",
+        error
+      );
+    }
+  };
+
+  /*
+   * Utilisateur en ligne
+   */
+  const isUserOnline = (
+    userId: number | undefined
+  ) => {
+    if (!userId) {
+      return false;
+    }
+
+    return onlineUsers.some(
+      (user) => user.id === userId
+    );
+  };
+
+  /*
+   * Autre participant
+   */
+  const getConversationUser = (
+    conversation: Conversation
+  ): User | undefined => {
+    if (currentUserId === conversation.user_id) {
+      return conversation.admin;
+    }
+
+    return conversation.user;
+  };
+
+  /*
+   * Messages non lus
+   */
+  const getUnreadCount = (
+    conversation: Conversation
+  ) => {
+    if (
+      conversation.unread_count !== undefined
+    ) {
+      return conversation.unread_count;
+    }
+
+    return 0;
+  };
+
   return (
-    <main className="min-h-screen bg-black text-white">
-      <div>
-        {/* NAVIGATION */}
-        <nav className="flex items-center justify-between p-4 bg-blue-600/50">
-          <h1 className="text-3xl font-bold text-white">
-            💬 Messageres
-          </h1>
+    <div className="min-h-screen bg-black text-white">
+      <div className="mx-auto flex h-screen max-w-7xl overflow-hidden">
 
-          <div className="flex gap-3">
-            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full">
-              🔔
-            </button>
+        {/* =========================
+            LISTE CONVERSATIONS
+        ========================== */}
 
-            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full">
-              Mon compte
+        <aside className="w-80 border-r border-gray-800 bg-gray-950">
+
+          <div className="border-b border-gray-800 p-5">
+            <h1 className="text-2xl font-bold text-blue-500">
+              Messageries
+            </h1>
+
+            <p className="mt-1 text-sm text-gray-400">
+              Vos conversations
+            </p>
+
+            <button
+              type="button"
+              onClick={handleNewConversation}
+              className="mt-4 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700"
+            >
+              + Nouvelle conversation
             </button>
           </div>
-        </nav>
 
-        {/* ZONE MESSAGERIE */}
-        <div className="flex h-[600px] border border-gray-700 bg-gray-950 shadow-sm">
+          {/* =========================
+              CHOIX ADMIN
+          ========================== */}
 
-          {/* COLONNE GAUCHE */}
-          <div className="w-1/3 border-r border-gray-700">
+          {showAdminList && (
+            <div className="border-b border-gray-800 bg-gray-900 p-4">
 
-            {/* TITRE */}
-            <h2 className="p-4 text-xl font-bold text-white">
-              Messages
-            </h2>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-semibold">
+                  Choisir un administrateur
+                </h2>
 
-            {/* RECHERCHE */}
-            <div className="px-4 pb-4">
-              <input
-                type="text"
-                placeholder="🔍 Rechercher..."
-                className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowAdminList(false)
+                  }
+                  className="text-gray-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {admins.length === 0 ? (
+                <p className="text-sm text-gray-400">
+                  Aucun administrateur disponible.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {admins.map((admin) => (
+                    <button
+                      key={admin.id}
+                      type="button"
+                      disabled={
+                        creatingConversation
+                      }
+                      onClick={() =>
+                        handleCreateConversation(
+                          admin
+                        )
+                      }
+                      className="flex w-full items-center gap-3 rounded-xl bg-gray-800 p-3 text-left transition hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 font-bold">
+                        {admin.name
+                          .charAt(0)
+                          .toUpperCase()}
+                      </div>
+
+                      <div>
+                        <p className="font-semibold">
+                          {admin.name}
+                        </p>
+
+                        <p className="text-xs text-gray-400">
+                          Administrateur
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+          )}
 
-            {/* CONVERSATION ADMIN */}
-            <div className="cursor-pointer border-y border-gray-700 bg-blue-900/30 px-4 py-4 hover:bg-blue-900/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+          {/* =========================
+              CONVERSATIONS
+          ========================== */}
 
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-500 text-xl">
-                    👨‍💼
-                  </div>
+          <div className="overflow-y-auto">
+            {loading ? (
+              <div className="p-5 text-center text-gray-400">
+                Chargement...
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="p-5 text-center text-gray-400">
+                Aucune conversation.
+              </div>
+            ) : (
+              conversations.map(
+                (conversation) => {
+                  const otherUser =
+                    getConversationUser(
+                      conversation
+                    );
 
-                  <div>
-                    <h3 className="font-semibold text-white">
-                      Admin ShopX
-                    </h3>
-                  </div>
+                  const unreadCount =
+                    getUnreadCount(
+                      conversation
+                    );
 
+                  const online =
+                    isUserOnline(
+                      otherUser?.id
+                    );
+
+                  return (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedConversation(
+                          conversation
+                        )
+                      }
+                      className={`flex w-full items-center gap-3 border-b border-gray-800 p-4 text-left transition ${
+                        selectedConversation?.id ===
+                        conversation.id
+                          ? "bg-blue-600"
+                          : "hover:bg-gray-900"
+                      }`}
+                    >
+                      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 font-bold">
+                        {otherUser?.name
+                          ?.charAt(0)
+                          .toUpperCase() ?? "?"}
+
+                        {online && (
+                          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-gray-950 bg-green-500" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate font-semibold">
+                            {otherUser?.name ??
+                              "Utilisateur"}
+                          </p>
+
+                          {unreadCount > 0 && (
+                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold">
+                              {unreadCount}
+                            </span>
+                          )}
+                        </div>
+
+                        <p
+                          className={`text-xs ${
+                            online
+                              ? "text-green-400"
+                              : "text-gray-500"
+                          }`}
+                        >
+                          {online
+                            ? "En ligne"
+                            : "Hors ligne"}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                }
+              )
+            )}
+          </div>
+        </aside>
+
+        {/* =========================
+            ZONE CHAT
+        ========================== */}
+
+        <main className="flex flex-1 flex-col bg-gray-900">
+
+          {!selectedConversation ? (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="text-center">
+                <div className="mb-4 text-6xl">
+                  💬
                 </div>
 
+                <h2 className="text-2xl font-bold">
+                  Messagerie
+                </h2>
+
+                <p className="mt-2 text-gray-400">
+                  Cliquez sur « Nouvelle conversation »
+                  pour commencer.
+                </p>
               </div>
             </div>
+          ) : (
+            <>
+              {/* =========================
+                  EN-TÊTE
+              ========================== */}
 
-            {/* CONVERSATION SERVICE CLIENT */}
-            <div className="cursor-pointer px-4 py-4 hover:bg-gray-900">
-              <div className="flex items-center gap-3">
+              <header className="flex items-center gap-3 border-b border-gray-800 bg-gray-950 p-4">
 
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-700 text-xl">
-                  👨‍💻
+                <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-blue-500 font-bold">
+                  {getConversationUser(
+                    selectedConversation
+                  )?.name
+                    ?.charAt(0)
+                    .toUpperCase() ?? "?"}
+
+                  {isUserOnline(
+                    getConversationUser(
+                      selectedConversation
+                    )?.id
+                  ) && (
+                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-gray-950 bg-green-500" />
+                  )}
                 </div>
 
                 <div>
-                  <h3 className="font-semibold text-white">
-                    Service client
-                  </h3>
-                </div>
-
-              </div>
-            </div>
-
-          </div>
-
-          {/* COLONNE DROITE */}
-          <div className="flex flex-1 flex-col">
-
-            {/* EN-TÊTE CONVERSATION */}
-            <div className="flex items-center justify-between border-b border-gray-700 px-6 py-4">
-
-              <div className="flex items-center gap-3">
-
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-500 text-xl">
-                  👨‍💼
-                </div>
-
-                <div>
-                  <h2 className="font-bold text-white">
-                    Admin ShopX
+                  <h2 className="font-bold">
+                    {getConversationUser(
+                      selectedConversation
+                    )?.name ??
+                      "Utilisateur"}
                   </h2>
 
+                  <p className="text-sm text-gray-400">
+                    {isUserOnline(
+                      getConversationUser(
+                        selectedConversation
+                      )?.id
+                    )
+                      ? "En ligne"
+                      : "Hors ligne"}
+                  </p>
                 </div>
+              </header>
 
+              {/* =========================
+                  MESSAGES
+              ========================== */}
+
+              <div className="flex-1 space-y-3 overflow-y-auto p-5">
+
+                {messages.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-gray-500">
+                    Aucun message.
+                  </div>
+                ) : (
+                  messages.map((message) => {
+                    const isMine =
+                      message.sender_id ===
+                      currentUserId;
+
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex ${
+                          isMine
+                            ? "justify-end"
+                            : "justify-start"
+                        }`}
+                        onMouseEnter={() =>
+                          handleMarkAsRead(
+                            message
+                          )
+                        }
+                      >
+                        <div
+                          className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                            isMine
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-800 text-gray-100"
+                          }`}
+                        >
+                          <p className="break-words">
+                            {message.message}
+                          </p>
+
+                          <div className="mt-1 flex items-center justify-end gap-2 text-xs opacity-70">
+                            <span>
+                              {new Date(
+                                message.created_at
+                              ).toLocaleTimeString(
+                                "fr-FR",
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
+                            </span>
+
+                            {isMine && (
+                              <span>
+                                {message.read_at
+                                  ? "✓✓"
+                                  : "✓"}
+                              </span>
+                            )}
+                          </div>
+
+                          {(isMine ||
+                            selectedConversation.admin_id ===
+                              currentUserId) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteMessage(
+                                  message
+                                )
+                              }
+                              className="mt-2 text-xs text-red-300 hover:text-red-100"
+                            >
+                              Supprimer
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-            </div>
+              {/* =========================
+                  ENVOI
+              ========================== */}
 
-            {/* MESSAGES */}
-            <div className="flex-1 space-y-5 overflow-y-auto bg-gray-900 p-6">
+              <div className="border-t border-gray-800 bg-gray-950 p-4">
+                <div className="flex gap-3">
 
-              {/* MESSAGE ADMIN */}
-              <div className="flex items-start gap-3">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(event) =>
+                      setNewMessage(
+                        event.target.value
+                      )
+                    }
+                    onKeyDown={handleKeyDown}
+                    placeholder="Écrivez votre message..."
+                    className="flex-1 rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+                  />
 
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={!newMessage.trim()}
+                    className="rounded-xl bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Envoyer
+                  </button>
 
+                </div>
               </div>
-
-              {/* MESSAGE UTILISATEUR */}
-              <div className="flex justify-end">
-
-              </div>
-
-            </div>
-
-            {/* ZONE D'ÉCRITURE */}
-            <div className="border-t border-gray-700 bg-gray-950 p-4">
-
-              <div className="flex items-center gap-3">
-
-                <button className="rounded-full p-3 text-xl text-white hover:bg-gray-800">
-                  📎
-                </button>
-
-                <input
-                  type="text"
-                  placeholder="Écrire un message..."
-                  className="flex-1 rounded-full border border-gray-700 bg-gray-900 px-5 py-3 text-white placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-                />
-
-                <button className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-500 text-xl text-white hover:bg-blue-700">
-                  ➤
-                </button>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
+            </>
+          )}
+        </main>
       </div>
-    </main>
+    </div>
   );
 }
