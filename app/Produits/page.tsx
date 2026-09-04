@@ -6,6 +6,7 @@ import {
     useEffect,
     useState,
 } from "react";
+
 import { useRouter } from "next/navigation";
 
 interface Product {
@@ -33,6 +34,13 @@ interface User {
     role?: string;
 }
 
+interface Conversation {
+    id: number;
+    user_id: number;
+    admin_id: number;
+    unread_count?: number;
+}
+
 interface ApiObjectResponse {
     message?: string;
     product?: Product;
@@ -57,21 +65,24 @@ export default function ProductsPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState<number | null>(null);
-    const [buying, setBuying] = useState<number | null>(null);
+    const [addingToCart, setAddingToCart] = useState<number | null>(null);
 
     const [user, setUser] = useState<User | null>(null);
     const [checkingAuth, setCheckingAuth] = useState(true);
 
     const [unreadCount, setUnreadCount] = useState(0);
+
+    /*
+     * COMPTEUR GLOBAL DES MESSAGES NON LUS
+     */
+    const [unreadMessagesCount, setUnreadMessagesCount] =
+        useState(0);
+
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
     const [editingProduct, setEditingProduct] =
         useState<Product | null>(null);
-
-    const pushMessageries = () => {
-        router.push("/Messageries");
-        };
 
     const [form, setForm] = useState<ProductForm>({
         name: "",
@@ -79,6 +90,20 @@ export default function ProductsPage() {
         price: "",
         stock: "",
     });
+
+    /*
+     * ALLER AUX MESSAGERIES
+     */
+    const pushMessageries = () => {
+        router.push("/Messageries");
+    };
+
+    /*
+     * ALLER AU PANIER
+     */
+    const pushPanier = () => {
+        router.push("/Panier");
+    };
 
     /*
      * RÉCUPÉRER LE TOKEN
@@ -234,6 +259,78 @@ export default function ProductsPage() {
     }, [forceLogout]);
 
     /*
+     * RÉCUPÉRER LE COMPTEUR DES MESSAGES NON LUS
+     *
+     * Laravel retourne unread_count pour chaque conversation.
+     * On additionne tous les unread_count.
+     */
+    const fetchUnreadMessages = useCallback(async () => {
+        const token = getToken();
+
+        if (!token) {
+            forceLogout();
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                `${API_URL}/conversations`,
+                {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (response.status === 401) {
+                forceLogout();
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    `Impossible de récupérer les conversations : ${response.status}`
+                );
+            }
+
+            const data =
+                await response.json();
+
+            if (!Array.isArray(data)) {
+                setUnreadMessagesCount(0);
+                return;
+            }
+
+            const conversations =
+                data as Conversation[];
+
+            const totalUnread =
+                conversations.reduce(
+                    (
+                        total: number,
+                        conversation: Conversation
+                    ) =>
+                        total +
+                        (Number(
+                            conversation.unread_count
+                        ) || 0),
+                    0
+                );
+
+            setUnreadMessagesCount(
+                totalUnread
+            );
+        } catch (err) {
+            console.error(
+                "Erreur récupération compteur messages :",
+                err
+            );
+        }
+    }, [forceLogout]);
+
+    /*
      * RÉCUPÉRER LES PRODUITS
      *
      * ADMIN ET CLIENT PEUVENT VOIR LES PRODUITS.
@@ -322,10 +419,12 @@ export default function ProductsPage() {
 
         fetchProducts();
         fetchUnreadNotifications();
+        fetchUnreadMessages();
     }, [
         checkingAuth,
         fetchProducts,
         fetchUnreadNotifications,
+        fetchUnreadMessages,
     ]);
 
     /*
@@ -364,7 +463,8 @@ export default function ProductsPage() {
         setSaving(true);
 
         try {
-            const productBeingEdited = editingProduct;
+            const productBeingEdited =
+                editingProduct;
 
             const isEditing =
                 productBeingEdited !== null;
@@ -380,8 +480,10 @@ export default function ProductsPage() {
             const name = form.name.trim();
             const description =
                 form.description.trim();
-            const priceValue = form.price.trim();
-            const stockValue = form.stock.trim();
+            const priceValue =
+                form.price.trim();
+            const stockValue =
+                form.stock.trim();
 
             /*
              * VALIDATION DU NOM
@@ -397,7 +499,9 @@ export default function ProductsPage() {
              */
             if (
                 priceValue === "" ||
-                !/^-?\d+(\.\d+)?$/.test(priceValue)
+                !/^-?\d+(\.\d+)?$/.test(
+                    priceValue
+                )
             ) {
                 throw new Error(
                     "Le prix doit être un nombre supérieur ou égal à 0."
@@ -438,28 +542,36 @@ export default function ProductsPage() {
                 );
             }
 
-            const response = await fetch(url, {
-                method,
-                headers: {
-                    Accept: "application/json",
-                    "Content-Type":
-                        "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    name,
-                    description: description || null,
-                    price,
-                    stock,
-                }),
-            });
+            const response = await fetch(
+                url,
+                {
+                    method,
+                    headers: {
+                        Accept:
+                            "application/json",
+                        "Content-Type":
+                            "application/json",
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        name,
+                        description:
+                            description ||
+                            null,
+                        price,
+                        stock,
+                    }),
+                }
+            );
 
             if (response.status === 401) {
                 forceLogout();
                 return;
             }
 
-            const data = await parseResponse(response);
+            const data =
+                await parseResponse(response);
 
             /*
              * ERREURS DE VALIDATION LARAVEL
@@ -470,7 +582,9 @@ export default function ProductsPage() {
                 data.errors
             ) {
                 const validationErrors =
-                    Object.values(data.errors)
+                    Object.values(
+                        data.errors
+                    )
                         .flat()
                         .join(" ");
 
@@ -555,7 +669,9 @@ export default function ProductsPage() {
     /*
      * MODIFIER UN PRODUIT
      */
-    const handleEdit = (product: Product) => {
+    const handleEdit = (
+        product: Product
+    ) => {
         setEditingProduct(product);
 
         setForm({
@@ -578,7 +694,9 @@ export default function ProductsPage() {
     /*
      * SUPPRIMER UN PRODUIT
      */
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (
+        id: number
+    ) => {
         const token = getToken();
 
         if (!token) {
@@ -586,9 +704,10 @@ export default function ProductsPage() {
             return;
         }
 
-        const confirmed = window.confirm(
-            "Voulez-vous vraiment supprimer ce produit ?"
-        );
+        const confirmed =
+            window.confirm(
+                "Voulez-vous vraiment supprimer ce produit ?"
+            );
 
         if (!confirmed) {
             return;
@@ -599,23 +718,27 @@ export default function ProductsPage() {
         setDeleting(id);
 
         try {
-            const response = await fetch(
-                `${API_URL}/products/${id}`,
-                {
-                    method: "DELETE",
-                    headers: {
-                        Accept: "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
+            const response =
+                await fetch(
+                    `${API_URL}/products/${id}`,
+                    {
+                        method: "DELETE",
+                        headers: {
+                            Accept:
+                                "application/json",
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
 
             if (response.status === 401) {
                 forceLogout();
                 return;
             }
 
-            const data = await parseResponse(response);
+            const data =
+                await parseResponse(response);
 
             if (!response.ok) {
                 const message =
@@ -637,7 +760,9 @@ export default function ProductsPage() {
                     )
             );
 
-            if (editingProduct?.id === id) {
+            if (
+                editingProduct?.id === id
+            ) {
                 resetForm();
             }
 
@@ -661,11 +786,11 @@ export default function ProductsPage() {
     };
 
     /*
-     * ACHETER UN PRODUIT
-     *
-     * ADMIN ET CLIENT PEUVENT ACHETER.
+     * AJOUTER UN PRODUIT AU PANIER
      */
-    const handleBuy = async (product: Product) => {
+    const handleAddToCart = async (
+        product: Product
+    ) => {
         const token = getToken();
 
         if (!token) {
@@ -683,70 +808,47 @@ export default function ProductsPage() {
             return;
         }
 
-        const quantityInput = window.prompt(
-            `Combien voulez-vous acheter de "${product.name}" ?`,
-            "1"
-        );
-
-        if (quantityInput === null) {
-            return;
-        }
-
-        const quantity = Number(quantityInput);
-
-        if (
-            !Number.isInteger(quantity) ||
-            quantity < 1
-        ) {
-            setError(
-                "La quantité doit être un nombre entier supérieur à 0."
-            );
-            return;
-        }
-
-        if (quantity > product.stock) {
-            setError(
-                `Stock insuffisant. Il reste seulement ${product.stock} produit(s).`
-            );
-            return;
-        }
-
         setError("");
         setSuccess("");
-        setBuying(product.id);
+        setAddingToCart(product.id);
 
         try {
-            const response = await fetch(
-                `${API_URL}/orders`,
-                {
-                    method: "POST",
-                    headers: {
-                        Accept: "application/json",
-                        "Content-Type":
-                            "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        product_id: product.id,
-                        quantity,
-                    }),
-                }
-            );
+            const response =
+                await fetch(
+                    `${API_URL}/cart`,
+                    {
+                        method: "POST",
+                        headers: {
+                            Accept:
+                                "application/json",
+                            "Content-Type":
+                                "application/json",
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            product_id:
+                                product.id,
+                            quantity: 1,
+                        }),
+                    }
+                );
 
             if (response.status === 401) {
                 forceLogout();
                 return;
             }
 
-            const data = await parseResponse(response);
+            const data =
+                await parseResponse(response);
 
             console.log(
-                "Réponse achat Laravel :",
+                "Réponse ajout panier Laravel :",
                 data
             );
 
             /*
-             * ERREURS DE VALIDATION
+             * ERREURS DE VALIDATION LARAVEL
              */
             if (
                 response.status === 422 &&
@@ -754,13 +856,15 @@ export default function ProductsPage() {
                 data.errors
             ) {
                 const validationErrors =
-                    Object.values(data.errors)
+                    Object.values(
+                        data.errors
+                    )
                         .flat()
                         .join(" ");
 
                 throw new Error(
                     validationErrors ||
-                        "Les informations de l'achat sont invalides."
+                        "Les données envoyées sont invalides."
                 );
             }
 
@@ -772,47 +876,16 @@ export default function ProductsPage() {
 
                 throw new Error(
                     message ||
-                        "Impossible d'effectuer l'achat."
+                        "Impossible d'ajouter le produit au panier."
                 );
             }
 
-            /*
-             * DIMINUER LE STOCK
-             */
-            setProducts(
-                (currentProducts) =>
-                    currentProducts.map(
-                        (currentProduct) =>
-                            currentProduct.id ===
-                            product.id
-                                ? {
-                                      ...currentProduct,
-                                      stock:
-                                          currentProduct.stock -
-                                          quantity,
-                                  }
-                                : currentProduct
-                    )
-            );
-
-            /*
-             * AUGMENTER LE COMPTEUR
-             */
-            setUnreadCount(
-                (currentCount) =>
-                    currentCount + 1
-            );
-
             setSuccess(
-                `Achat effectué avec succès ! Vous avez acheté ${quantity} ${
-                    quantity > 1
-                        ? "produits"
-                        : "produit"
-                } "${product.name}".`
+                `"${product.name}" a été ajouté au panier.`
             );
         } catch (err) {
             console.error(
-                "Erreur achat produit :",
+                "Erreur ajout panier :",
                 err
             );
 
@@ -822,7 +895,7 @@ export default function ProductsPage() {
                     : "Une erreur est survenue."
             );
         } finally {
-            setBuying(null);
+            setAddingToCart(null);
         }
     };
 
@@ -843,8 +916,9 @@ export default function ProductsPage() {
         <main className="min-h-screen bg-black px-6 py-10 text-white">
             <div className="mx-auto max-w-6xl">
 
-                {/* TITRE + NOTIFICATIONS */}
+                {/* TITRE + BOUTONS */}
                 <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+
                     <div>
                         <h1 className="text-4xl font-bold">
                             Mes produits
@@ -855,39 +929,64 @@ export default function ProductsPage() {
                         </p>
                     </div>
 
+                    <div className="flex flex-wrap gap-3">
 
-                   <div className="flex gap-3">
+                        {/* PANIER */}
+                        <button
+                            type="button"
+                            onClick={pushPanier}
+                            className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
+                        >
+                            🛒 Panier
+                        </button>
 
-                     <button
-                        type="button"
-                        onClick={pushMessageries}
-                        className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
-                    >
-                        💬 Messageries
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={handleNotifications}
-                        className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
-                    >
-                        <span className="text-xl">
-                            🔔
-                        </span>
-
-                        <span>
-                            Notifications
-                        </span>
-
-                        {unreadCount > 0 && (
-                            <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
-                                {unreadCount > 99
-                                    ? "99+"
-                                    : unreadCount}
+                        {/* MESSAGERIES */}
+                        <button
+                            type="button"
+                            onClick={pushMessageries}
+                            className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
+                        >
+                            <span>
+                                💬
                             </span>
-                        )}
-                    </button>
-                   </div>
+
+                            <span>
+                                Messageries
+                            </span>
+
+                            {unreadMessagesCount > 0 && (
+                                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
+                                    {unreadMessagesCount > 99
+                                        ? "99+"
+                                        : unreadMessagesCount}
+                                </span>
+                            )}
+                        </button>
+
+                        {/* NOTIFICATIONS */}
+                        <button
+                            type="button"
+                            onClick={handleNotifications}
+                            className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
+                        >
+                            <span className="text-xl">
+                                🔔
+                            </span>
+
+                            <span>
+                                Notifications
+                            </span>
+
+                            {unreadCount > 0 && (
+                                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
+                                    {unreadCount > 99
+                                        ? "99+"
+                                        : unreadCount}
+                                </span>
+                            )}
+                        </button>
+
+                    </div>
                 </div>
 
                 {/* ERREUR */}
@@ -907,6 +1006,7 @@ export default function ProductsPage() {
                 {/* FORMULAIRE ADMIN UNIQUEMENT */}
                 {user?.role === "admin" && (
                     <section className="mb-10 rounded-2xl border border-gray-800 bg-gray-900 p-6">
+
                         <h2 className="mb-6 text-2xl font-semibold">
                             {editingProduct
                                 ? "Modifier le produit"
@@ -917,6 +1017,7 @@ export default function ProductsPage() {
                             onSubmit={handleSubmit}
                             className="grid gap-5 md:grid-cols-2"
                         >
+
                             {/* NOM */}
                             <div>
                                 <label
@@ -1008,6 +1109,7 @@ export default function ProductsPage() {
 
                             {/* BOUTONS DU FORMULAIRE */}
                             <div className="flex gap-3 md:col-span-2">
+
                                 <button
                                     type="submit"
                                     disabled={saving}
@@ -1030,14 +1132,18 @@ export default function ProductsPage() {
                                         Annuler
                                     </button>
                                 )}
+
                             </div>
+
                         </form>
                     </section>
                 )}
 
                 {/* LISTE DES PRODUITS */}
                 <section>
+
                     <div className="mb-5 flex items-center justify-between">
+
                         <h2 className="text-2xl font-semibold">
                             Liste des produits
                         </h2>
@@ -1048,6 +1154,7 @@ export default function ProductsPage() {
                                 ? "s"
                                 : ""}
                         </span>
+
                     </div>
 
                     {loading ? (
@@ -1056,6 +1163,7 @@ export default function ProductsPage() {
                         </div>
                     ) : products.length === 0 ? (
                         <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center">
+
                             <div className="mb-4 text-5xl">
                                 🛍️
                             </div>
@@ -1067,143 +1175,172 @@ export default function ProductsPage() {
                             <p className="mt-2 text-gray-400">
                                 Vous n'avez encore créé aucun produit.
                             </p>
+
                         </div>
                     ) : (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                            {products.map((product) => (
-                                <article
-                                    key={product.id}
-                                    className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl"
-                                >
-                                    {/* EN-TÊTE */}
-                                    <div className="mb-5 flex items-start justify-between gap-4">
-                                        <div>
-                                            <h3 className="text-xl font-bold">
-                                                {product.name}
-                                            </h3>
 
-                                            <p className="mt-1 text-sm text-gray-500">
-                                                Produit #{product.id}
-                                            </p>
+                            {products.map(
+                                (product) => (
+                                    <article
+                                        key={product.id}
+                                        className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl"
+                                    >
+
+                                        {/* EN-TÊTE */}
+                                        <div className="mb-5 flex items-start justify-between gap-4">
+
+                                            <div>
+                                                <h3 className="text-xl font-bold">
+                                                    {product.name}
+                                                </h3>
+
+                                                <p className="mt-1 text-sm text-gray-500">
+                                                    Produit #{product.id}
+                                                </p>
+                                            </div>
+
+                                            <span
+                                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                                    product.stock > 0
+                                                        ? "bg-green-900/40 text-green-400"
+                                                        : "bg-red-900/40 text-red-400"
+                                                }`}
+                                            >
+                                                {product.stock > 0
+                                                    ? "En stock"
+                                                    : "Rupture"}
+                                            </span>
+
                                         </div>
 
-                                        <span
-                                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                                product.stock > 0
-                                                    ? "bg-green-900/40 text-green-400"
-                                                    : "bg-red-900/40 text-red-400"
-                                            }`}
-                                        >
-                                            {product.stock > 0
-                                                ? "En stock"
-                                                : "Rupture"}
-                                        </span>
-                                    </div>
+                                        {/* DESCRIPTION */}
+                                        <p className="mb-5 min-h-12 text-sm text-gray-400">
+                                            {product.description ||
+                                                "Aucune description."}
+                                        </p>
 
-                                    {/* DESCRIPTION */}
-                                    <p className="mb-5 min-h-12 text-sm text-gray-400">
-                                        {product.description ||
-                                            "Aucune description."}
-                                    </p>
+                                        {/* PRIX + STOCK */}
+                                        <div className="mb-6 flex items-center justify-between">
 
-                                    {/* PRIX + STOCK */}
-                                    <div className="mb-6 flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm text-gray-500">
-                                                Prix
-                                            </p>
+                                            <div>
+                                                <p className="text-sm text-gray-500">
+                                                    Prix
+                                                </p>
 
-                                            <p className="text-xl font-bold text-blue-400">
-                                                {Number(
-                                                    product.price
-                                                ).toLocaleString(
-                                                    "fr-FR"
-                                                )}{" "}
-                                                FCFA
-                                            </p>
+                                                <p className="text-xl font-bold text-blue-400">
+                                                    {Number(
+                                                        product.price
+                                                    ).toLocaleString(
+                                                        "fr-FR"
+                                                    )}{" "}
+                                                    FCFA
+                                                </p>
+                                            </div>
+
+                                            <div className="text-right">
+                                                <p className="text-sm text-gray-500">
+                                                    Stock
+                                                </p>
+
+                                                <p className="text-lg font-semibold">
+                                                    {product.stock}
+                                                </p>
+                                            </div>
+
                                         </div>
 
-                                        <div className="text-right">
-                                            <p className="text-sm text-gray-500">
-                                                Stock
-                                            </p>
+                                        {/* ACTIONS */}
+                                        <div className="flex flex-col gap-3">
 
-                                            <p className="text-lg font-semibold">
-                                                {product.stock}
-                                            </p>
-                                        </div>
-                                    </div>
+                                            {/* BOUTONS ADMIN */}
+                                            {user?.role ===
+                                                "admin" && (
+                                                <div className="flex gap-3">
 
-                                    {/* ACTIONS */}
-                                    <div className="flex flex-col gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleEdit(
+                                                                product
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            deleting !==
+                                                                null ||
+                                                            addingToCart !==
+                                                                null
+                                                        }
+                                                        className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        Modifier
+                                                    </button>
 
-                                        {/* BOUTONS ADMIN */}
-                                        {user?.role === "admin" && (
-                                            <div className="flex gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDelete(
+                                                                product.id
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            deleting ===
+                                                                product.id ||
+                                                            addingToCart !==
+                                                                null
+                                                        }
+                                                        className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        {deleting ===
+                                                        product.id
+                                                            ? "Suppression..."
+                                                            : "Supprimer"}
+                                                    </button>
+
+                                                </div>
+                                            )}
+
+                                            {/* AJOUTER AU PANIER */}
+                                            {(user?.role ===
+                                                "admin" ||
+                                                user?.role ===
+                                                    "client") && (
                                                 <button
                                                     type="button"
                                                     onClick={() =>
-                                                        handleEdit(product)
-                                                    }
-                                                    disabled={
-                                                        deleting !== null ||
-                                                        buying !== null
-                                                    }
-                                                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                    Modifier
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDelete(
-                                                            product.id
+                                                        handleAddToCart(
+                                                            product
                                                         )
                                                     }
                                                     disabled={
-                                                        deleting ===
+                                                        product.stock <=
+                                                            0 ||
+                                                        addingToCart ===
                                                             product.id ||
-                                                        buying !== null
+                                                        deleting !==
+                                                            null
                                                     }
-                                                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
-                                                    {deleting ===
+                                                    {addingToCart ===
                                                     product.id
-                                                        ? "Suppression..."
-                                                        : "Supprimer"}
+                                                        ? "Ajout au panier..."
+                                                        : product.stock <=
+                                                            0
+                                                          ? "Rupture de stock"
+                                                          : "🛒 Ajouter au panier"}
                                                 </button>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {/* BOUTON ACHETER :
-                                            ADMIN + CLIENT */}
-                                        {(user?.role === "admin" ||
-                                            user?.role === "client") && (
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    handleBuy(product)
-                                                }
-                                                disabled={
-                                                    product.stock <= 0 ||
-                                                    buying === product.id ||
-                                                    deleting !== null
-                                                }
-                                                className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                            >
-                                                {buying === product.id
-                                                    ? "Achat en cours..."
-                                                    : product.stock <= 0
-                                                      ? "Rupture de stock"
-                                                      : "Acheter"}
-                                            </button>
-                                        )}
-                                    </div>
-                                </article>
-                            ))}
+                                        </div>
+
+                                    </article>
+                                )
+                            )}
+
                         </div>
                     )}
+
                 </section>
             </div>
         </main>

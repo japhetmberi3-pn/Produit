@@ -54,12 +54,20 @@ export default function MessageriesPage() {
   const [currentUserId, setCurrentUserId] =
     useState<number | null>(null);
 
+  const [currentUserRole, setCurrentUserRole] =
+    useState<string | null>(null);
+
+  const [searchTerm, setSearchTerm] = useState("");
+
   const [admins, setAdmins] = useState<User[]>([]);
   const [showAdminList, setShowAdminList] =
     useState(false);
 
   const [onlineUsers, setOnlineUsers] =
     useState<User[]>([]);
+
+  const [deletingConversation, setDeletingConversation] =
+    useState(false);
 
   /*
    * Récupérer l'utilisateur connecté
@@ -77,6 +85,10 @@ export default function MessageriesPage() {
       if (parsedUser?.id) {
         setCurrentUserId(parsedUser.id);
       }
+
+      if (parsedUser?.role) {
+        setCurrentUserRole(parsedUser.role);
+      }
     } catch (error) {
       console.error(
         "Impossible de récupérer l'utilisateur connecté :",
@@ -84,6 +96,11 @@ export default function MessageriesPage() {
       );
     }
   }, []);
+
+  /*
+   * Vérifier si l'utilisateur connecté est admin
+   */
+  const isAdmin = currentUserRole === "admin";
 
   /*
    * Récupérer les conversations
@@ -314,7 +331,198 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Récupérer les messages de la conversation sélectionnée
+   * Marquer toute la conversation comme lue
+   */
+  const handleMarkConversationAsRead = async (
+    conversation: Conversation
+  ) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/conversations/${conversation.id}/read`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData =
+          await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.message ||
+            `Erreur marquage conversation : ${response.status}`
+        );
+      }
+
+      /*
+       * Mettre le compteur de cette conversation à 0
+       */
+      setConversations(
+        (currentConversations) =>
+          currentConversations.map(
+            (currentConversation) =>
+              currentConversation.id === conversation.id
+                ? {
+                    ...currentConversation,
+                    unread_count: 0,
+                  }
+                : currentConversation
+          )
+      );
+
+      /*
+       * Mettre également à jour la conversation sélectionnée
+       */
+      setSelectedConversation(
+        (currentConversation) => {
+          if (
+            !currentConversation ||
+            currentConversation.id !== conversation.id
+          ) {
+            return currentConversation;
+          }
+
+          return {
+            ...currentConversation,
+            unread_count: 0,
+          };
+        }
+      );
+
+      /*
+       * Mettre les messages reçus comme lus
+       */
+      setMessages((currentMessages) =>
+        currentMessages.map((message) =>
+          message.sender_id !== currentUserId &&
+          !message.read_at
+            ? {
+                ...message,
+                read_at: new Date().toISOString(),
+              }
+            : message
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Erreur marquage conversation comme lue :",
+        error
+      );
+    }
+  };
+
+  /*
+   * Sélectionner une conversation
+   */
+  const handleSelectConversation = async (
+    conversation: Conversation
+  ) => {
+    setSelectedConversation(conversation);
+
+    await handleMarkConversationAsRead(
+      conversation
+    );
+  };
+
+  /*
+   * Fermer la discussion ouverte.
+   *
+   * La conversation reste dans la liste.
+   * Aucun message n'est supprimé.
+   */
+  const handleCloseConversation = () => {
+    setSelectedConversation(null);
+    setMessages([]);
+    setNewMessage("");
+  };
+
+  /*
+   * Supprimer la conversation uniquement pour
+   * l'utilisateur connecté.
+   */
+  const handleDeleteConversation = async () => {
+    if (!selectedConversation) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Voulez-vous vraiment supprimer cette conversation de votre liste ? Les messages resteront visibles pour l'autre participant."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    setDeletingConversation(true);
+
+    try {
+      const conversationId =
+        selectedConversation.id;
+
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/conversations/${conversationId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      const data =
+        await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            `Erreur suppression conversation : ${response.status}`
+        );
+      }
+
+      /*
+       * Retirer la conversation de la liste
+       * uniquement chez l'utilisateur actuel.
+       */
+      setConversations(
+        (currentConversations) =>
+          currentConversations.filter(
+            (conversation) =>
+              conversation.id !== conversationId
+          )
+      );
+
+      setSelectedConversation(null);
+      setMessages([]);
+      setNewMessage("");
+    } catch (error) {
+      console.error(
+        "Erreur suppression conversation :",
+        error
+      );
+    } finally {
+      setDeletingConversation(false);
+    }
+  };
+
+  /*
+   * Récupérer les messages
    */
   useEffect(() => {
     if (!selectedConversation) {
@@ -425,8 +633,23 @@ export default function MessageriesPage() {
                 return currentMessages;
               }
 
-              return [...currentMessages, data];
+              return [
+                ...currentMessages,
+                data,
+              ];
             });
+
+            /*
+             * Si le message vient de l'autre utilisateur,
+             * la conversation est ouverte : on le marque comme lu.
+             */
+            if (
+              data.sender_id !== currentUserId
+            ) {
+              handleMarkConversationAsRead(
+                selectedConversation
+              );
+            }
           }
         )
         .listen(
@@ -473,7 +696,7 @@ export default function MessageriesPage() {
 
       echoInstance.leave("presence.chat");
     };
-  }, [selectedConversation]);
+  }, [selectedConversation, currentUserId]);
 
   /*
    * Envoyer un message
@@ -564,7 +787,7 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Marquer comme lu
+   * Marquer un message comme lu
    */
   const handleMarkAsRead = async (
     message: Message
@@ -702,7 +925,7 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Messages non lus
+   * Messages non lus d'une conversation
    */
   const getUnreadCount = (
     conversation: Conversation
@@ -716,6 +939,33 @@ export default function MessageriesPage() {
     return 0;
   };
 
+  /*
+   * Recherche des conversations par nom.
+   *
+   * Pour l'administrateur, on recherche le nom
+   * de l'utilisateur avec lequel il discute.
+   */
+  const filteredConversations =
+    conversations.filter((conversation) => {
+      if (!isAdmin) {
+        return true;
+      }
+
+      const search = searchTerm
+        .trim()
+        .toLowerCase();
+
+      if (!search) {
+        return true;
+      }
+
+      const userName =
+        conversation.user?.name
+          ?.toLowerCase() ?? "";
+
+      return userName.includes(search);
+    });
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="mx-auto flex h-screen max-w-7xl overflow-hidden">
@@ -727,13 +977,37 @@ export default function MessageriesPage() {
         <aside className="w-80 border-r border-gray-800 bg-gray-950">
 
           <div className="border-b border-gray-800 p-5">
-            <h1 className="text-2xl font-bold text-blue-500">
-              Messageries
-            </h1>
+
+            {/* TITRE */}
+            <div>
+              <h1 className="text-2xl font-bold text-blue-500">
+                Messageries
+              </h1>
+            </div>
 
             <p className="mt-1 text-sm text-gray-400">
               Vos conversations
             </p>
+
+            {/* =========================
+                RECHERCHE ADMIN
+            ========================== */}
+
+            {isAdmin && (
+              <div className="mt-4">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) =>
+                    setSearchTerm(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Rechercher par nom..."
+                  className="w-full rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-blue-500"
+                />
+              </div>
+            )}
 
             <button
               type="button"
@@ -818,12 +1092,15 @@ export default function MessageriesPage() {
               <div className="p-5 text-center text-gray-400">
                 Chargement...
               </div>
-            ) : conversations.length === 0 ? (
+            ) : filteredConversations.length === 0 ? (
               <div className="p-5 text-center text-gray-400">
-                Aucune conversation.
+                {isAdmin &&
+                searchTerm.trim()
+                  ? "Aucun utilisateur trouvé."
+                  : "Aucune conversation."}
               </div>
             ) : (
-              conversations.map(
+              filteredConversations.map(
                 (conversation) => {
                   const otherUser =
                     getConversationUser(
@@ -845,7 +1122,7 @@ export default function MessageriesPage() {
                       key={conversation.id}
                       type="button"
                       onClick={() =>
-                        setSelectedConversation(
+                        handleSelectConversation(
                           conversation
                         )
                       }
@@ -909,6 +1186,7 @@ export default function MessageriesPage() {
           {!selectedConversation ? (
             <div className="flex flex-1 items-center justify-center">
               <div className="text-center">
+
                 <div className="mb-4 text-6xl">
                   💬
                 </div>
@@ -918,9 +1196,10 @@ export default function MessageriesPage() {
                 </h2>
 
                 <p className="mt-2 text-gray-400">
-                  Cliquez sur « Nouvelle conversation »
+                  Cliquez sur une conversation
                   pour commencer.
                 </p>
+
               </div>
             </div>
           ) : (
@@ -947,8 +1226,8 @@ export default function MessageriesPage() {
                   )}
                 </div>
 
-                <div>
-                  <h2 className="font-bold">
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate font-bold">
                     {getConversationUser(
                       selectedConversation
                     )?.name ??
@@ -965,6 +1244,37 @@ export default function MessageriesPage() {
                       : "Hors ligne"}
                   </p>
                 </div>
+
+                {/* =========================
+                    BOUTON FERMER
+                ========================== */}
+
+                <button
+                  type="button"
+                  onClick={
+                    handleCloseConversation
+                  }
+                  className="rounded-xl bg-gray-700 px-4 py-2 text-sm font-semibold transition hover:bg-gray-600"
+                >
+                  Fermer
+                </button>
+
+                {/* =========================
+                    BOUTON SUPPRIMER
+                ========================== */}
+
+                <button
+                  type="button"
+                  onClick={
+                    handleDeleteConversation
+                  }
+                  disabled={deletingConversation}
+                  className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deletingConversation
+                    ? "Suppression..."
+                    : "Supprimer"}
+                </button>
               </header>
 
               {/* =========================
