@@ -160,6 +160,9 @@ export default function AuthPage() {
 
             setIsLoggedIn(true);
 
+            // ================================
+            // CONNEXION
+            // ================================
             if (mode === "login") {
                 setSuccess(
                     "Connexion réussie !"
@@ -168,18 +171,49 @@ export default function AuthPage() {
                 setEmail("");
                 setPassword("");
 
-                router.push("/Produits");
-            } else {
-                setSuccess(
-                    "Compte créé avec succès !"
+                // Vendeur → MaBoutique
+                if (
+                    authData.user.role === "vendeur" ||
+                    authData.user.role === "seller"
+                ) {
+                    router.push(
+                        "/MaBoutique"
+                    );
+                } else {
+                    // Client / Admin → Produits
+                    router.push(
+                        "/Produits"
+                    );
+                }
+
+                return;
+            }
+
+            // ================================
+            // INSCRIPTION
+            // ================================
+            setSuccess(
+                "Compte créé avec succès !"
+            );
+
+            setName("");
+            setEmail("");
+            setPassword("");
+            setRole("client");
+
+            // Vendeur → MaBoutique
+            if (
+                authData.user.role === "vendeur" ||
+                authData.user.role === "seller"
+            ) {
+                router.push(
+                    "/MaBoutique"
                 );
-
-                setName("");
-                setEmail("");
-                setPassword("");
-                setRole("client");
-
-                router.push("/Produits");
+            } else {
+                // Client → Produits
+                router.push(
+                    "/Produits"
+                );
             }
         } catch (err) {
             console.error(

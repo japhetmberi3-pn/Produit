@@ -620,7 +620,6 @@ isAdmin || isSeller;
 
 return ( <main className="min-h-screen bg-black px-6 py-10 text-white"> <div className="mx-auto max-w-7xl">
 
-```
     {/* HEADER */}
     <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
