@@ -31,11 +31,14 @@ export default function AuthPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
 
+    const [role, setRole] = useState<
+        "client" | "vendeur"
+    >("client");
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
-    // Vérifier si l'utilisateur est connecté
     const [isLoggedIn, setIsLoggedIn] =
         useState(false);
 
@@ -81,6 +84,7 @@ export default function AuthPage() {
                           name: name.trim(),
                           email: email.trim(),
                           password,
+                          role,
                       };
 
             const response = await fetch(
@@ -90,7 +94,7 @@ export default function AuthPage() {
                     headers: {
                         Accept:
                             "application/json",
-                            "Content-Type":
+                        "Content-Type":
                             "application/json",
                     },
                     body: JSON.stringify(
@@ -140,7 +144,7 @@ export default function AuthPage() {
                 );
             }
 
-            // Sauvegarder le token Sanctum
+            // Sauvegarder le token
             localStorage.setItem(
                 "token",
                 authData.token
@@ -154,7 +158,6 @@ export default function AuthPage() {
                 )
             );
 
-            // L'utilisateur est maintenant connecté
             setIsLoggedIn(true);
 
             if (mode === "login") {
@@ -174,6 +177,7 @@ export default function AuthPage() {
                 setName("");
                 setEmail("");
                 setPassword("");
+                setRole("client");
 
                 router.push("/Produits");
             }
@@ -367,6 +371,46 @@ export default function AuthPage() {
                                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
                             />
                         </div>
+
+                        {/* RÔLE */}
+                        {mode ===
+                            "register" && (
+                            <div className="mb-5">
+                                <label
+                                    htmlFor="role"
+                                    className="mb-2 block text-sm font-medium text-gray-300"
+                                >
+                                    Type de compte
+                                </label>
+
+                                <select
+                                    id="role"
+                                    value={
+                                        role
+                                    }
+                                    onChange={(
+                                        event
+                                    ) =>
+                                        setRole(
+                                            event
+                                                .target
+                                                .value as
+                                                | "client"
+                                                | "vendeur"
+                                        )
+                                    }
+                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+                                >
+                                    <option value="client">
+                                        Client
+                                    </option>
+
+                                    <option value="vendeur">
+                                        Vendeur
+                                    </option>
+                                </select>
+                            </div>
+                        )}
 
                         {/* MOT DE PASSE */}
                         <div className="mb-6">

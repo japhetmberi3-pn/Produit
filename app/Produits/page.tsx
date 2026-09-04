@@ -1,1427 +1,1027 @@
 "use client";
 
 import {
-    FormEvent,
-    useCallback,
-    useEffect,
-    useState,
+FormEvent,
+useCallback,
+useEffect,
+useState,
 } from "react";
-
 import { useRouter } from "next/navigation";
 
+interface Shop {
+id: number;
+name: string;
+description?: string | null;
+}
+
 interface Product {
-    id: number;
-    user_id: number;
-    name: string;
-    description: string | null;
-    price: number;
-    stock: number;
-    created_at: string;
-    updated_at: string;
+id: number;
+user_id: number;
+shop_id: number;
+name: string;
+description?: string | null;
+price: number;
+stock: number;
+created_at: string;
+updated_at: string;
+shop?: Shop | null;
 }
 
 interface ProductForm {
-    name: string;
-    description: string;
-    price: string;
-    stock: string;
+name: string;
+description: string;
+price: string;
+stock: string;
 }
 
 interface User {
-    id: number;
-    name: string;
-    email: string;
-    role?: string;
+id: number;
+name: string;
+email?: string;
+role?: string;
 }
 
 interface Conversation {
-    id: number;
-    user_id: number;
-    admin_id: number;
-    unread_count?: number;
+id: number;
+unread_count?: number;
 }
 
 interface CartItem {
-    id: number;
-    product_id: number;
-    quantity?: number;
+id: number;
+quantity: number;
 }
 
 interface ApiObjectResponse {
-    message?: string;
-    product?: Product;
-    products?: Product[];
-    unread_count?: number;
-    items?: CartItem[];
-    errors?: Record<string, string[]>;
+message?: string;
+product?: Product;
 }
 
-type ApiResponse =
-    | ApiObjectResponse
-    | Product[]
-    | Record<string, never>;
+interface ApiResponse {
+message?: string;
+products?: Product[];
+}
 
 const API_URL =
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://127.0.0.1:8000/api";
-
-export default function ProductsPage() {
-    const router = useRouter();
-
-    const [products, setProducts] = useState<Product[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [deleting, setDeleting] = useState<number | null>(null);
-    const [addingToCart, setAddingToCart] = useState<number | null>(null);
-
-    const [user, setUser] = useState<User | null>(null);
-    const [checkingAuth, setCheckingAuth] = useState(true);
-
-    const [unreadCount, setUnreadCount] = useState(0);
-
-    /*
-     * COMPTEUR GLOBAL DES MESSAGES NON LUS
-     */
-    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
-
-    /*
-     * COMPTEUR DU PANIER
-     */
-    const [cartCount, setCartCount] = useState(0);
-
-    const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
-
-    const [editingProduct, setEditingProduct] =
-        useState<Product | null>(null);
-
-    const [form, setForm] = useState<ProductForm>({
-        name: "",
-        description: "",
-        price: "",
-        stock: "",
-    });
-
-    /*
-     * ALLER AUX MESSAGERIES
-     */
-    const pushMessageries = () => {
-        router.push("/Messageries");
-    };
-
-    /*
-     * ALLER AU PANIER
-     */
-    const pushPanier = () => {
-        router.push("/Panier");
-    };
-
-    /*
-     * RÉCUPÉRER LE TOKEN
-     */
-    const getToken = (): string | null => {
-        if (typeof window === "undefined") {
-            return null;
-        }
-
-        return localStorage.getItem("token");
-    };
-
-    /*
-     * VÉRIFICATION DE L'AUTHENTIFICATION
-     */
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-
-        if (!token) {
-            router.replace("/");
-            return;
-        }
-
-        setCheckingAuth(false);
-    }, [router]);
-
-    /*
-     * DÉCONNEXION FORCÉE
-     */
-    const forceLogout = useCallback(() => {
-        if (typeof window !== "undefined") {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-        }
-
-        router.replace("/");
-    }, [router]);
-
-    /*
-     * RÉCUPÉRER L'UTILISATEUR
-     */
-    useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-
-        if (storedUser) {
-            try {
-                const parsedUser = JSON.parse(storedUser);
-                setUser(parsedUser);
-            } catch (error) {
-                console.error(
-                    "Impossible de récupérer l'utilisateur :",
-                    error
-                );
-            }
-        }
-    }, []);
-
-    /*
-     * RÉINITIALISER LE FORMULAIRE
-     */
-    const resetForm = () => {
-        setForm({
-            name: "",
-            description: "",
-            price: "",
-            stock: "",
-        });
-
-        setEditingProduct(null);
-    };
-
-    /*
-     * ALLER AUX NOTIFICATIONS
-     */
-    const handleNotifications = () => {
-        router.push("/Notifications");
-    };
-
-    /*
-     * LIRE UNE RÉPONSE DE L'API
-     */
-    const parseResponse = async (
-        response: Response
-    ): Promise<ApiResponse> => {
-        const text = await response.text();
-
-        if (!text) {
-            return {};
-        }
-
-        try {
-            return JSON.parse(text) as ApiResponse;
-        } catch {
-            return {
-                message: text,
-            };
-        }
-    };
-
-    /*
-     * RÉCUPÉRER LES NOTIFICATIONS NON LUES
-     */
-    const fetchUnreadNotifications = useCallback(async () => {
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        try {
-            const response = await fetch(
-                `${API_URL}/notifications`,
-                {
-                    method: "GET",
-                    headers: {
-                        Accept: "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            const data = await parseResponse(response);
-
-            if (!response.ok) {
-                const message =
-                    !Array.isArray(data)
-                        ? data.message
-                        : undefined;
-
-                throw new Error(
-                    message ||
-                        "Impossible de récupérer les notifications."
-                );
-            }
-
-            if (!Array.isArray(data)) {
-                setUnreadCount(
-                    Number(data.unread_count) || 0
-                );
-            }
-        } catch (err) {
-            console.error(
-                "Erreur récupération compteur notifications :",
-                err
-            );
-        }
-    }, [forceLogout]);
-
-    /*
-     * RÉCUPÉRER LE COMPTEUR DES MESSAGES NON LUS
-     */
-    const fetchUnreadMessages = useCallback(async () => {
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        try {
-            const response = await fetch(
-                `${API_URL}/conversations`,
-                {
-                    method: "GET",
-                    headers: {
-                        Accept: "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            if (!response.ok) {
-                throw new Error(
-                    `Impossible de récupérer les conversations : ${response.status}`
-                );
-            }
-
-            const data = await response.json();
-
-            if (!Array.isArray(data)) {
-                setUnreadMessagesCount(0);
-                return;
-            }
-
-            const conversations =
-                data as Conversation[];
-
-            const totalUnread =
-                conversations.reduce(
-                    (
-                        total: number,
-                        conversation: Conversation
-                    ) =>
-                        total +
-                        (Number(
-                            conversation.unread_count
-                        ) || 0),
-                    0
-                );
-
-            setUnreadMessagesCount(totalUnread);
-        } catch (err) {
-            console.error(
-                "Erreur récupération compteur messages :",
-                err
-            );
-        }
-    }, [forceLogout]);
-
-    /*
-     * RÉCUPÉRER LE COMPTEUR DU PANIER
-     */
-    const fetchCartCount = useCallback(async () => {
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        try {
-            const response = await fetch(
-                `${API_URL}/cart`,
-                {
-                    method: "GET",
-                    headers: {
-                        Accept: "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            if (!response.ok) {
-                throw new Error(
-                    "Impossible de récupérer le panier."
-                );
-            }
-
-            const data = await response.json();
-
-            const items = Array.isArray(data?.items)
-                ? data.items
-                : [];
-
-            const totalQuantity = items.reduce(
-                (
-                    total: number,
-                    item: CartItem
-                ) =>
-                    total +
-                    (Number(item.quantity) || 0),
-                0
-            );
-
-            setCartCount(totalQuantity);
-        } catch (err) {
-            console.error(
-                "Erreur récupération compteur panier :",
-                err
-            );
-        }
-    }, [forceLogout]);
-
-    /*
-     * RÉCUPÉRER LES PRODUITS
-     */
-    const fetchProducts = useCallback(async () => {
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        setLoading(true);
-        setError("");
-
-        try {
-            const response = await fetch(
-                `${API_URL}/products`,
-                {
-                    method: "GET",
-                    headers: {
-                        Accept: "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            const data = await parseResponse(response);
-
-            console.log(
-                "Produits reçus depuis Laravel :",
-                data
-            );
-
-            if (!response.ok) {
-                const message =
-                    !Array.isArray(data)
-                        ? data.message
-                        : undefined;
-
-                throw new Error(
-                    message ||
-                        "Impossible de récupérer les produits."
-                );
-            }
-
-            if (Array.isArray(data)) {
-                setProducts(data);
-                return;
-            }
-
-            if (Array.isArray(data.products)) {
-                setProducts(data.products);
-                return;
-            }
-
-            setProducts([]);
-        } catch (err) {
-            console.error(
-                "Erreur récupération produits :",
-                err
-            );
-
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Une erreur est survenue."
-            );
-        } finally {
-            setLoading(false);
-        }
-    }, [forceLogout]);
-
-    /*
-     * CHARGEMENT INITIAL
-     */
-    useEffect(() => {
-        if (checkingAuth) {
-            return;
-        }
-
-        fetchProducts();
-        fetchUnreadNotifications();
-        fetchUnreadMessages();
-        fetchCartCount();
-    }, [
-        checkingAuth,
-        fetchProducts,
-        fetchUnreadNotifications,
-        fetchUnreadMessages,
-        fetchCartCount,
-    ]);
-
-    /*
-     * MODIFICATION DU FORMULAIRE
-     */
-    const handleChange = (
-        event: React.ChangeEvent<
-            HTMLInputElement | HTMLTextAreaElement
-        >
-    ) => {
-        const { name, value } = event.target;
-
-        setForm((currentForm) => ({
-            ...currentForm,
-            [name]: value,
-        }));
-    };
-
-    /*
-     * CRÉER OU MODIFIER UN PRODUIT
-     */
-    const handleSubmit = async (
-        event: FormEvent<HTMLFormElement>
-    ) => {
-        event.preventDefault();
-
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        setError("");
-        setSuccess("");
-        setSaving(true);
-
-        try {
-            const productBeingEdited =
-                editingProduct;
-
-            const isEditing =
-                productBeingEdited !== null;
-
-            const url = isEditing
-                ? `${API_URL}/products/${productBeingEdited.id}`
-                : `${API_URL}/products`;
-
-            const method = isEditing
-                ? "PUT"
-                : "POST";
-
-            const name = form.name.trim();
-            const description =
-                form.description.trim();
-
-            const priceValue =
-                form.price.trim();
-
-            const stockValue =
-                form.stock.trim();
-
-            /*
-             * VALIDATION DU NOM
-             */
-            if (!name) {
-                throw new Error(
-                    "Le nom du produit est obligatoire."
-                );
-            }
-
-            /*
-             * VALIDATION DU PRIX
-             */
-            if (
-                priceValue === "" ||
-                !/^-?\d+(\.\d+)?$/.test(
-                    priceValue
-                )
-            ) {
-                throw new Error(
-                    "Le prix doit être un nombre supérieur ou égal à 0."
-                );
-            }
-
-            const price = Number(priceValue);
-
-            if (
-                !Number.isFinite(price) ||
-                price < 0
-            ) {
-                throw new Error(
-                    "Le prix doit être un nombre supérieur ou égal à 0."
-                );
-            }
-
-            /*
-             * VALIDATION DU STOCK
-             */
-            if (
-                stockValue === "" ||
-                !/^-?\d+$/.test(stockValue)
-            ) {
-                throw new Error(
-                    "Le stock doit être un nombre entier supérieur ou égal à 0."
-                );
-            }
-
-            const stock = Number(stockValue);
-
-            if (
-                !Number.isInteger(stock) ||
-                stock < 0
-            ) {
-                throw new Error(
-                    "Le stock doit être un nombre entier supérieur ou égal à 0."
-                );
-            }
-
-            const response = await fetch(
-                url,
-                {
-                    method,
-                    headers: {
-                        Accept:
-                            "application/json",
-                        "Content-Type":
-                            "application/json",
-                        Authorization:
-                            `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        name,
-                        description:
-                            description || null,
-                        price,
-                        stock,
-                    }),
-                }
-            );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            const data =
-                await parseResponse(response);
-
-            /*
-             * ERREURS DE VALIDATION LARAVEL
-             */
-            if (
-                response.status === 422 &&
-                !Array.isArray(data) &&
-                data.errors
-            ) {
-                const validationErrors =
-                    Object.values(data.errors)
-                        .flat()
-                        .join(" ");
-
-                throw new Error(
-                    validationErrors ||
-                        "Les données envoyées sont invalides."
-                );
-            }
-
-            if (!response.ok) {
-                const message =
-                    !Array.isArray(data)
-                        ? data.message
-                        : undefined;
-
-                throw new Error(
-                    message ||
-                        "Impossible d'enregistrer le produit."
-                );
-            }
-
-            if (
-                Array.isArray(data) ||
-                !data.product
-            ) {
-                throw new Error(
-                    "Laravel n'a pas retourné le produit."
-                );
-            }
-
-            /*
-             * MODIFICATION
-             */
-            if (isEditing) {
-                setProducts(
-                    (currentProducts) =>
-                        currentProducts.map(
-                            (product) =>
-                                product.id ===
-                                productBeingEdited.id
-                                    ? data.product!
-                                    : product
-                        )
-                );
-
-                setSuccess(
-                    "Produit modifié avec succès."
-                );
-            } else {
-                /*
-                 * CRÉATION
-                 */
-                setProducts(
-                    (currentProducts) => [
-                        data.product!,
-                        ...currentProducts,
-                    ]
-                );
-
-                setSuccess(
-                    "Produit créé et enregistré dans la base de données."
-                );
-            }
-
-            resetForm();
-        } catch (err) {
-            console.error(
-                "Erreur enregistrement produit :",
-                err
-            );
-
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Une erreur est survenue."
-            );
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    /*
-     * MODIFIER UN PRODUIT
-     */
-    const handleEdit = (
-        product: Product
-    ) => {
-        setEditingProduct(product);
-
-        setForm({
-            name: product.name,
-            description:
-                product.description ?? "",
-            price: String(product.price),
-            stock: String(product.stock),
-        });
-
-        setError("");
-        setSuccess("");
-
-        window.scrollTo({
-            top: 0,
-            behavior: "smooth",
-        });
-    };
-
-    /*
-     * SUPPRIMER UN PRODUIT
-     */
-    const handleDelete = async (
-        id: number
-    ) => {
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        const confirmed =
-            window.confirm(
-                "Voulez-vous vraiment supprimer ce produit ?"
-            );
-
-        if (!confirmed) {
-            return;
-        }
-
-        setError("");
-        setSuccess("");
-        setDeleting(id);
-
-        try {
-            const response =
-                await fetch(
-                    `${API_URL}/products/${id}`,
-                    {
-                        method: "DELETE",
-                        headers: {
-                            Accept:
-                                "application/json",
-                            Authorization:
-                                `Bearer ${token}`,
-                        },
-                    }
-                );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            const data =
-                await parseResponse(response);
-
-            if (!response.ok) {
-                const message =
-                    !Array.isArray(data)
-                        ? data.message
-                        : undefined;
-
-                throw new Error(
-                    message ||
-                        "Impossible de supprimer le produit."
-                );
-            }
-
-            setProducts(
-                (currentProducts) =>
-                    currentProducts.filter(
-                        (product) =>
-                            product.id !== id
-                    )
-            );
-
-            if (
-                editingProduct?.id === id
-            ) {
-                resetForm();
-            }
-
-            setSuccess(
-                "Produit supprimé avec succès."
-            );
-        } catch (err) {
-            console.error(
-                "Erreur suppression produit :",
-                err
-            );
-
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Une erreur est survenue."
-            );
-        } finally {
-            setDeleting(null);
-        }
-    };
-
-    /*
-     * AJOUTER UN PRODUIT AU PANIER
-     */
-    const handleAddToCart = async (
-        product: Product
-    ) => {
-        const token = getToken();
-
-        if (!token) {
-            forceLogout();
-            return;
-        }
-
-        /*
-         * PROTECTION CONTRE LA RUPTURE DE STOCK
-         */
-        if (product.stock <= 0) {
-            setError(
-                "Ce produit est en rupture de stock."
-            );
-            return;
-        }
-
-        setError("");
-        setSuccess("");
-        setAddingToCart(product.id);
-
-        try {
-            const response =
-                await fetch(
-                    `${API_URL}/cart`,
-                    {
-                        method: "POST",
-                        headers: {
-                            Accept:
-                                "application/json",
-                            "Content-Type":
-                                "application/json",
-                            Authorization:
-                                `Bearer ${token}`,
-                        },
-                        body: JSON.stringify({
-                            product_id:
-                                product.id,
-                            quantity: 1,
-                        }),
-                    }
-                );
-
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
-
-            const data =
-                await parseResponse(response);
-
-            console.log(
-                "Réponse ajout panier Laravel :",
-                data
-            );
-
-            /*
-             * ERREURS DE VALIDATION LARAVEL
-             */
-            if (
-                response.status === 422 &&
-                !Array.isArray(data) &&
-                data.errors
-            ) {
-                const validationErrors =
-                    Object.values(
-                        data.errors
-                    )
-                        .flat()
-                        .join(" ");
-
-                throw new Error(
-                    validationErrors ||
-                        "Les données envoyées sont invalides."
-                );
-            }
-
-            if (!response.ok) {
-                const message =
-                    !Array.isArray(data)
-                        ? data.message
-                        : undefined;
-
-                throw new Error(
-                    message ||
-                        "Impossible d'ajouter le produit au panier."
-                );
-            }
-
-            /*
-             * METTRE À JOUR LE COMPTEUR DU PANIER
-             */
-            await fetchCartCount();
-
-            setSuccess(
-                `"${product.name}" a été ajouté au panier.`
-            );
-        } catch (err) {
-            console.error(
-                "Erreur ajout panier :",
-                err
-            );
-
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Une erreur est survenue."
-            );
-        } finally {
-            setAddingToCart(null);
-        }
-    };
-
-    /*
-     * PENDANT LA VÉRIFICATION DU TOKEN
-     */
-    if (checkingAuth) {
-        return (
-            <main className="flex min-h-screen items-center justify-center bg-black text-white">
-                <p className="text-gray-400">
-                    Vérification de la connexion...
-                </p>
-            </main>
-        );
+process.env.NEXT_PUBLIC_API_URL ||
+"http://127.0.0.1:8000/api";
+
+export default function ProduitsPage() {
+const router = useRouter();
+
+const [products, setProducts] = useState<Product[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState("");
+
+const [user, setUser] = useState<User | null>(null);
+
+const [form, setForm] = useState<ProductForm>({
+name: "",
+description: "",
+price: "",
+stock: "",
+});
+
+const [editingProduct, setEditingProduct] =
+useState<Product | null>(null);
+
+const [submitting, setSubmitting] = useState(false);
+
+const [unreadNotifications, setUnreadNotifications] =
+useState(0);
+
+const [unreadMessages, setUnreadMessages] =
+useState(0);
+
+const [cartCount, setCartCount] = useState(0);
+
+const forceLogout = useCallback(() => {
+localStorage.removeItem("token");
+localStorage.removeItem("user");
+router.push("/Connexion");
+}, [router]);
+
+const fetchProducts = useCallback(async () => {
+try {
+const token = localStorage.getItem("token");
+
+  if (!token) {
+    forceLogout();
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/products`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (response.status === 401) {
+    forceLogout();
+    return;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      "Impossible de récupérer les produits."
+    );
+  }
+
+  const data:
+    | Product[]
+    | ApiResponse = await response.json();
+
+  if (Array.isArray(data)) {
+    setProducts(data);
+  } else {
+    setProducts(data.products || []);
+  }
+} catch (err) {
+  console.error(
+    "Erreur récupération produits :",
+    err
+  );
+
+  setError(
+    "Impossible de récupérer les produits."
+  );
+} finally {
+  setLoading(false);
+}
+
+}, [forceLogout]);
+
+const fetchNotifications =
+useCallback(async () => {
+try {
+const token =
+localStorage.getItem("token");
+
+    if (!token) {
+      return;
     }
 
-    return (
-        <main className="min-h-screen bg-black px-6 py-10 text-white">
-            <div className="mx-auto max-w-6xl">
+    const response = await fetch(
+      `${API_URL}/notifications`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
-                {/* TITRE + BOUTONS */}
-                <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+    if (!response.ok) {
+      return;
+    }
 
-                    <div>
-                        <h1 className="text-4xl font-bold">
-                            Mes produits
-                        </h1>
+    const data =
+      await response.json();
 
-                        <p className="mt-2 text-gray-400">
-                            Gérez vos produits depuis cette page.
-                        </p>
-                    </div>
+    setUnreadNotifications(
+      data.unread_count || 0
+    );
+  } catch (err) {
+    console.error(
+      "Erreur notifications :",
+      err
+    );
+  }
+}, []);
 
-                    <div className="flex flex-wrap gap-3">
+const fetchMessages =
+useCallback(async () => {
+try {
+const token =
+localStorage.getItem("token");
 
-                        {/* PANIER */}
-                        <button
-                            type="button"
-                            onClick={pushPanier}
-                            className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
-                        >
-                            <span>
-                                🛒 Panier
-                            </span>
+    if (!token) {
+      return;
+    }
 
-                            {cartCount > 0 && (
-                                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
-                                    {cartCount > 99
-                                        ? "99+"
-                                        : cartCount}
-                                </span>
-                            )}
-                        </button>
+    const response = await fetch(
+      `${API_URL}/conversations`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
-                        {/* MESSAGERIES */}
-                        <button
-                            type="button"
-                            onClick={pushMessageries}
-                            className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
-                        >
-                            <span>
-                                💬
-                            </span>
+    if (!response.ok) {
+      return;
+    }
 
-                            <span>
-                                Messageries
-                            </span>
+    const data: Conversation[] =
+      await response.json();
 
-                            {unreadMessagesCount > 0 && (
-                                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
-                                    {unreadMessagesCount > 99
-                                        ? "99+"
-                                        : unreadMessagesCount}
-                                </span>
-                            )}
-                        </button>
+    const totalUnread =
+      data.reduce(
+        (total, conversation) =>
+          total +
+          (conversation.unread_count || 0),
+        0
+      );
 
-                        {/* NOTIFICATIONS */}
-                        <button
-                            type="button"
-                            onClick={handleNotifications}
-                            className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
-                        >
-                            <span className="text-xl">
-                                🔔
-                            </span>
+    setUnreadMessages(totalUnread);
+  } catch (err) {
+    console.error(
+      "Erreur messages :",
+      err
+    );
+  }
+}, []);
 
-                            <span>
-                                Notifications
-                            </span>
+const fetchCart =
+useCallback(async () => {
+try {
+const token =
+localStorage.getItem("token");
 
-                            {unreadCount > 0 && (
-                                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
-                                    {unreadCount > 99
-                                        ? "99+"
-                                        : unreadCount}
-                                </span>
-                            )}
-                        </button>
+    if (!token) {
+      return;
+    }
 
-                    </div>
+    const response = await fetch(
+      `${API_URL}/cart`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data =
+      await response.json();
+
+    if (Array.isArray(data)) {
+      const total =
+        data.reduce(
+          (
+            sum: number,
+            item: CartItem
+          ) =>
+            sum +
+            Number(item.quantity || 0),
+          0
+        );
+
+      setCartCount(total);
+      return;
+    }
+
+    if (Array.isArray(data.items)) {
+      const total =
+        data.items.reduce(
+          (
+            sum: number,
+            item: CartItem
+          ) =>
+            sum +
+            Number(item.quantity || 0),
+          0
+        );
+
+      setCartCount(total);
+      return;
+    }
+
+    setCartCount(0);
+  } catch (err) {
+    console.error(
+      "Erreur panier :",
+      err
+    );
+  }
+}, []);
+
+useEffect(() => {
+const storedToken =
+localStorage.getItem("token");
+
+const storedUser =
+  localStorage.getItem("user");
+
+if (!storedToken) {
+  forceLogout();
+  return;
+}
+
+if (storedUser) {
+  try {
+    const parsedUser: User =
+      JSON.parse(storedUser);
+
+    setUser(parsedUser);
+  } catch (err) {
+    console.error(
+      "Erreur lecture utilisateur :",
+      err
+    );
+  }
+}
+
+fetchProducts();
+fetchNotifications();
+fetchMessages();
+fetchCart();
+
+}, [
+forceLogout,
+fetchProducts,
+fetchNotifications,
+fetchMessages,
+fetchCart,
+]);
+
+const handleChange = (
+e:
+| React.ChangeEvent<HTMLInputElement>
+| React.ChangeEvent<HTMLTextAreaElement>
+) => {
+const { name, value } = e.target;
+
+setForm((previous) => ({
+  ...previous,
+  [name]: value,
+}));
+
+};
+
+const handleSubmit = async (
+e: FormEvent<HTMLFormElement>
+) => {
+e.preventDefault();
+
+setError("");
+setSubmitting(true);
+
+try {
+  const token =
+    localStorage.getItem("token");
+
+  if (!token) {
+    forceLogout();
+    return;
+  }
+
+  const isEditing =
+    editingProduct !== null;
+
+  const url = isEditing
+    ? `${API_URL}/products/${editingProduct.id}`
+    : `${API_URL}/products`;
+
+  const method = isEditing
+    ? "PUT"
+    : "POST";
+
+  const response = await fetch(
+    url,
+    {
+      method,
+      headers: {
+        Accept: "application/json",
+        "Content-Type":
+          "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: form.name,
+        description: form.description,
+        price: Number(form.price),
+        stock: Number(form.stock),
+      }),
+    }
+  );
+
+  const data: ApiObjectResponse =
+    await response.json();
+
+  if (response.status === 401) {
+    forceLogout();
+    return;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.message ||
+        "Une erreur est survenue."
+    );
+  }
+
+  setForm({
+    name: "",
+    description: "",
+    price: "",
+    stock: "",
+  });
+
+  setEditingProduct(null);
+
+  await fetchProducts();
+} catch (err) {
+  console.error(
+    "Erreur création/modification produit :",
+    err
+  );
+
+  setError(
+    err instanceof Error
+      ? err.message
+      : "Une erreur est survenue."
+  );
+} finally {
+  setSubmitting(false);
+}
+
+};
+
+const handleEdit = (
+product: Product
+) => {
+setEditingProduct(product);
+
+setForm({
+  name: product.name,
+  description:
+    product.description || "",
+  price: String(product.price),
+  stock: String(product.stock),
+});
+
+window.scrollTo({
+  top: 0,
+  behavior: "smooth",
+});
+
+};
+
+const cancelEdit = () => {
+setEditingProduct(null);
+
+setForm({
+  name: "",
+  description: "",
+  price: "",
+  stock: "",
+});
+``
+
+};
+
+const handleDelete = async (
+productId: number
+) => {
+const confirmation =
+window.confirm(
+"Voulez-vous vraiment supprimer ce produit ?"
+);
+
+if (!confirmation) {
+  return;
+}
+
+try {
+  const token =
+    localStorage.getItem("token");
+
+  if (!token) {
+    forceLogout();
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/products/${productId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data: ApiObjectResponse =
+    await response.json();
+
+  if (response.status === 401) {
+    forceLogout();
+    return;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.message ||
+        "Impossible de supprimer le produit."
+    );
+  }
+
+  setProducts((previous) =>
+    previous.filter(
+      (product) =>
+        product.id !== productId
+    )
+  );
+} catch (err) {
+  console.error(
+    "Erreur suppression produit :",
+    err
+  );
+
+  setError(
+    err instanceof Error
+      ? err.message
+      : "Impossible de supprimer le produit."
+  );
+}
+
+};
+
+const addToCart = async (
+productId: number
+) => {
+try {
+const token =
+localStorage.getItem("token");
+
+  if (!token) {
+    forceLogout();
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/cart`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type":
+          "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        product_id: productId,
+        quantity: 1,
+      }),
+    }
+  );
+
+  const data =
+    await response.json();
+
+  if (response.status === 401) {
+    forceLogout();
+    return;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.message ||
+        "Impossible d'ajouter le produit au panier."
+    );
+  }
+
+  await fetchCart();
+} catch (err) {
+  console.error(
+    "Erreur ajout panier :",
+    err
+  );
+
+  setError(
+    err instanceof Error
+      ? err.message
+      : "Impossible d'ajouter le produit au panier."
+  );
+}
+
+};
+
+const isAdmin =
+user?.role === "admin";
+
+const isSeller =
+user?.role === "vendeur" ||
+user?.role === "seller";
+
+const canManageProducts =
+isAdmin || isSeller;
+
+return ( <main className="min-h-screen bg-black px-6 py-10 text-white"> <div className="mx-auto max-w-7xl">
+
+```
+    {/* HEADER */}
+    <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h1 className="text-4xl font-bold text-blue-500">
+          Produits
+        </h1>
+
+        <p className="mt-2 text-gray-400">
+          Découvrez les produits disponibles dans les différentes boutiques.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+
+        <button
+          onClick={() =>
+            router.push("/Boutique")
+          }
+          className="rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
+        >
+          🏪 Boutiques
+        </button>
+
+        <button
+          onClick={() =>
+            router.push("/Panier")
+          }
+          className="relative rounded-lg border border-gray-700 bg-gray-950 px-5 py-3 font-semibold transition hover:border-blue-500"
+        >
+          🛒 Panier
+
+          {cartCount > 0 && (
+            <span className="ml-2 rounded-full bg-blue-600 px-2 py-1 text-xs">
+              {cartCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() =>
+            router.push(
+              "/Notifications"
+            )
+          }
+          className="relative rounded-lg border border-gray-700 bg-gray-950 px-5 py-3 font-semibold transition hover:border-blue-500"
+        >
+          🔔 Notifications
+
+          {unreadNotifications >
+            0 && (
+            <span className="ml-2 rounded-full bg-red-600 px-2 py-1 text-xs">
+              {unreadNotifications}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() =>
+            router.push("/Messageries")
+          }
+          className="relative rounded-lg border border-gray-700 bg-gray-950 px-5 py-3 font-semibold transition hover:border-blue-500"
+        >
+          💬 Messages
+
+          {unreadMessages > 0 && (
+            <span className="ml-2 rounded-full bg-red-600 px-2 py-1 text-xs">
+              {unreadMessages}
+            </span>
+          )}
+        </button>
+
+      </div>
+    </div>
+
+    {/* ERREUR */}
+    {error && (
+      <div className="mb-8 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+        {error}
+      </div>
+    )}
+
+    {/* FORMULAIRE ADMIN / VENDEUR */}
+    {canManageProducts && (
+      <div className="mb-12 rounded-2xl border border-gray-800 bg-gray-950 p-8">
+
+        <h2 className="mb-2 text-2xl font-bold">
+          {editingProduct
+            ? "Modifier le produit"
+            : "Ajouter un produit"}
+        </h2>
+
+        <p className="mb-6 text-sm text-gray-400">
+          {isSeller
+            ? "Le produit sera automatiquement associé à votre boutique."
+            : "Ajoutez un produit à la plateforme."}
+        </p>
+
+        <form
+          onSubmit={handleSubmit}
+          className="grid gap-6 md:grid-cols-2"
+        >
+
+          <div>
+            <label
+              htmlFor="name"
+              className="mb-2 block font-medium"
+            >
+              Nom du produit
+            </label>
+
+            <input
+              id="name"
+              name="name"
+              type="text"
+              value={form.name}
+              onChange={handleChange}
+              required
+              className="w-full rounded-xl border border-gray-700 bg-black px-4 py-3 text-white outline-none transition focus:border-blue-500"
+              placeholder="Nom du produit"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="price"
+              className="mb-2 block font-medium"
+            >
+              Prix
+            </label>
+
+            <input
+              id="price"
+              name="price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.price}
+              onChange={handleChange}
+              required
+              className="w-full rounded-xl border border-gray-700 bg-black px-4 py-3 text-white outline-none transition focus:border-blue-500"
+              placeholder="Prix"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="stock"
+              className="mb-2 block font-medium"
+            >
+              Stock
+            </label>
+
+            <input
+              id="stock"
+              name="stock"
+              type="number"
+              min="0"
+              value={form.stock}
+              onChange={handleChange}
+              required
+              className="w-full rounded-xl border border-gray-700 bg-black px-4 py-3 text-white outline-none transition focus:border-blue-500"
+              placeholder="Stock"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label
+              htmlFor="description"
+              className="mb-2 block font-medium"
+            >
+              Description
+            </label>
+
+            <textarea
+              id="description"
+              name="description"
+              rows={4}
+              value={form.description}
+              onChange={handleChange}
+              className="w-full resize-none rounded-xl border border-gray-700 bg-black px-4 py-3 text-white outline-none transition focus:border-blue-500"
+              placeholder="Description du produit"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-3 md:col-span-2">
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting
+                ? "Enregistrement..."
+                : editingProduct
+                ? "Modifier le produit"
+                : "Ajouter le produit"}
+            </button>
+
+            {editingProduct && (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-xl border border-gray-700 px-6 py-3 font-semibold transition hover:border-gray-500"
+              >
+                Annuler
+              </button>
+            )}
+
+          </div>
+        </form>
+      </div>
+    )}
+
+    {/* CHARGEMENT */}
+    {loading && (
+      <div className="py-20 text-center">
+        <p className="text-gray-400">
+          Chargement des produits...
+        </p>
+      </div>
+    )}
+
+    {/* AUCUN PRODUIT */}
+    {!loading &&
+      products.length === 0 && (
+        <div className="rounded-2xl border border-gray-800 bg-gray-950 p-10 text-center">
+          <h2 className="text-2xl font-semibold">
+            Aucun produit disponible
+          </h2>
+
+          <p className="mt-2 text-gray-400">
+            Les produits apparaîtront ici lorsqu'ils seront disponibles.
+          </p>
+        </div>
+      )}
+
+    {/* LISTE PRODUITS */}
+    {!loading &&
+      products.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+
+          {products.map((product) => (
+            <div
+              key={product.id}
+              className="rounded-2xl border border-gray-800 bg-gray-950 p-6 transition hover:-translate-y-1 hover:border-blue-500"
+            >
+
+              {/* ICÔNE */}
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-blue-600/20 text-4xl">
+                📦
+              </div>
+
+              {/* NOM */}
+              <h2 className="text-2xl font-bold">
+                {product.name}
+              </h2>
+
+              {/* DESCRIPTION */}
+              <p className="mt-3 min-h-[48px] text-gray-400">
+                {product.description ||
+                  "Aucune description disponible."}
+              </p>
+
+              {/* BOUTIQUE */}
+              {product.shop ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      `/Boutique/${product.shop?.id}`
+                    )
+                  }
+                  className="mt-5 w-full rounded-xl border border-blue-900/50 bg-blue-950/20 p-4 text-left transition hover:border-blue-500 hover:bg-blue-950/40"
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Boutique
+                  </p>
+
+                  <p className="mt-1 text-lg font-semibold text-blue-400">
+                    🏪{" "}
+                    {product.shop.name}
+                  </p>
+
+                  {product.shop
+                    .description && (
+                    <p className="mt-1 text-sm text-gray-400">
+                      {
+                        product.shop
+                          .description
+                      }
+                    </p>
+                  )}
+
+                  <p className="mt-3 text-sm text-blue-300">
+                    Voir la boutique →
+                  </p>
+                </button>
+              ) : (
+                <div className="mt-5 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+                  <p className="text-sm text-gray-500">
+                    🏪 Boutique non associée
+                  </p>
+                </div>
+              )}
+
+              {/* PRIX / STOCK */}
+              <div className="mt-5 flex items-center justify-between border-t border-gray-800 pt-5">
+
+                <div>
+                  <p className="text-sm text-gray-500">
+                    Prix
+                  </p>
+
+                  <p className="text-xl font-bold text-blue-400">
+                    {Number(
+                      product.price
+                    ).toLocaleString(
+                      "fr-FR"
+                    )}{" "}
+                    FCFA
+                  </p>
                 </div>
 
-                {/* ERREUR */}
-                {error && (
-                    <div className="mb-6 rounded-xl border border-red-700 bg-red-900/30 p-4 text-red-400">
-                        {error}
-                    </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">
+                    Stock
+                  </p>
+
+                  <p
+                    className={
+                      product.stock > 0
+                        ? "font-semibold text-green-400"
+                        : "font-semibold text-red-400"
+                    }
+                  >
+                    {product.stock}
+                  </p>
+                </div>
+
+              </div>
+
+              {/* PANIER */}
+              <div className="mt-6">
+
+                {product.stock > 0 ? (
+                  <button
+                    onClick={() =>
+                      addToCart(
+                        product.id
+                      )
+                    }
+                    className="w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
+                  >
+                    🛒 Ajouter au panier
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full cursor-not-allowed rounded-xl bg-gray-800 px-5 py-3 font-semibold text-gray-500"
+                  >
+                    Rupture de stock
+                  </button>
                 )}
 
-                {/* SUCCÈS */}
-                {success && (
-                    <div className="mb-6 rounded-xl border border-green-700 bg-green-900/30 p-4 text-green-400">
-                        {success}
-                    </div>
-                )}
+              </div>
 
-                {/* FORMULAIRE ADMIN UNIQUEMENT */}
-                {user?.role === "admin" && (
-                    <section className="mb-10 rounded-2xl border border-gray-800 bg-gray-900 p-6">
+              {/* MODIFICATION / SUPPRESSION */}
+              {canManageProducts && (
+                <div className="mt-3 flex gap-3">
 
-                        <h2 className="mb-6 text-2xl font-semibold">
-                            {editingProduct
-                                ? "Modifier le produit"
-                                : "Ajouter un produit"}
-                        </h2>
+                  <button
+                    onClick={() =>
+                      handleEdit(
+                        product
+                      )
+                    }
+                    className="flex-1 rounded-xl border border-blue-600 px-4 py-2 font-semibold text-blue-400 transition hover:bg-blue-600/10"
+                  >
+                    Modifier
+                  </button>
 
-                        <form
-                            onSubmit={handleSubmit}
-                            className="grid gap-5 md:grid-cols-2"
-                        >
+                  <button
+                    onClick={() =>
+                      handleDelete(
+                        product.id
+                      )
+                    }
+                    className="flex-1 rounded-xl border border-red-600 px-4 py-2 font-semibold text-red-400 transition hover:bg-red-600/10"
+                  >
+                    Supprimer
+                  </button>
 
-                            {/* NOM */}
-                            <div>
-                                <label
-                                    htmlFor="name"
-                                    className="mb-2 block text-sm font-medium text-gray-300"
-                                >
-                                    Nom du produit
-                                </label>
-
-                                <input
-                                    id="name"
-                                    name="name"
-                                    type="text"
-                                    value={form.name}
-                                    onChange={handleChange}
-                                    placeholder="Ordinateur HP"
-                                    required
-                                    disabled={saving}
-                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
-                            </div>
-
-                            {/* PRIX */}
-                            <div>
-                                <label
-                                    htmlFor="price"
-                                    className="mb-2 block text-sm font-medium text-gray-300"
-                                >
-                                    Prix
-                                </label>
-
-                                <input
-                                    id="price"
-                                    name="price"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={form.price}
-                                    onChange={handleChange}
-                                    placeholder="500000"
-                                    required
-                                    disabled={saving}
-                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
-                            </div>
-
-                            {/* STOCK */}
-                            <div>
-                                <label
-                                    htmlFor="stock"
-                                    className="mb-2 block text-sm font-medium text-gray-300"
-                                >
-                                    Stock
-                                </label>
-
-                                <input
-                                    id="stock"
-                                    name="stock"
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={form.stock}
-                                    onChange={handleChange}
-                                    placeholder="10"
-                                    required
-                                    disabled={saving}
-                                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
-                            </div>
-
-                            {/* DESCRIPTION */}
-                            <div className="md:col-span-2">
-                                <label
-                                    htmlFor="description"
-                                    className="mb-2 block text-sm font-medium text-gray-300"
-                                >
-                                    Description
-                                </label>
-
-                                <textarea
-                                    id="description"
-                                    name="description"
-                                    value={form.description}
-                                    onChange={handleChange}
-                                    placeholder="Description du produit..."
-                                    rows={4}
-                                    disabled={saving}
-                                    className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
-                            </div>
-
-                            {/* BOUTONS DU FORMULAIRE */}
-                            <div className="flex gap-3 md:col-span-2">
-
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    className="rounded-lg bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    {saving
-                                        ? "Enregistrement..."
-                                        : editingProduct
-                                          ? "Modifier le produit"
-                                          : "Ajouter le produit"}
-                                </button>
-
-                                {editingProduct && (
-                                    <button
-                                        type="button"
-                                        onClick={resetForm}
-                                        disabled={saving}
-                                        className="rounded-lg bg-gray-700 px-6 py-3 font-semibold transition hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        Annuler
-                                    </button>
-                                )}
-
-                            </div>
-
-                        </form>
-                    </section>
-                )}
-
-                {/* LISTE DES PRODUITS */}
-                <section>
-
-                    <div className="mb-5 flex items-center justify-between">
-
-                        <h2 className="text-2xl font-semibold">
-                            Liste des produits
-                        </h2>
-
-                        <span className="rounded-full bg-gray-800 px-4 py-2 text-sm text-gray-300">
-                            {products.length} produit
-                            {products.length > 1
-                                ? "s"
-                                : ""}
-                        </span>
-
-                    </div>
-
-                    {loading ? (
-                        <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center text-gray-400">
-                            Chargement des produits...
-                        </div>
-                    ) : products.length === 0 ? (
-                        <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center">
-
-                            <div className="mb-4 text-5xl">
-                                🛍️
-                            </div>
-
-                            <h3 className="text-xl font-semibold">
-                                Aucun produit
-                            </h3>
-
-                            <p className="mt-2 text-gray-400">
-                                Vous n'avez encore créé aucun produit.
-                            </p>
-
-                        </div>
-                    ) : (
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-
-                            {products.map(
-                                (product) => (
-                                    <article
-                                        key={product.id}
-                                        className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl"
-                                    >
-
-                                        {/* EN-TÊTE */}
-                                        <div className="mb-5 flex items-start justify-between gap-4">
-
-                                            <div>
-                                                <h3 className="text-xl font-bold">
-                                                    {product.name}
-                                                </h3>
-
-                                                <p className="mt-1 text-sm text-gray-500">
-                                                    Produit #{product.id}
-                                                </p>
-                                            </div>
-
-                                            <span
-                                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                                    product.stock > 0
-                                                        ? "bg-green-900/40 text-green-400"
-                                                        : "bg-red-900/40 text-red-400"
-                                                }`}
-                                            >
-                                                {product.stock > 0
-                                                    ? "En stock"
-                                                    : "Rupture"}
-                                            </span>
-
-                                        </div>
-
-                                        {/* DESCRIPTION */}
-                                        <p className="mb-5 min-h-12 text-sm text-gray-400">
-                                            {product.description ||
-                                                "Aucune description."}
-                                        </p>
-
-                                        {/* PRIX + STOCK */}
-                                        <div className="mb-6 flex items-center justify-between">
-
-                                            <div>
-                                                <p className="text-sm text-gray-500">
-                                                    Prix
-                                                </p>
-
-                                                <p className="text-xl font-bold text-blue-400">
-                                                    {Number(
-                                                        product.price
-                                                    ).toLocaleString(
-                                                        "fr-FR"
-                                                    )}{" "}
-                                                    FCFA
-                                                </p>
-                                            </div>
-
-                                            <div className="text-right">
-                                                <p className="text-sm text-gray-500">
-                                                    Stock
-                                                </p>
-
-                                                <p className="text-lg font-semibold">
-                                                    {product.stock}
-                                                </p>
-                                            </div>
-
-                                        </div>
-
-                                        {/* ACTIONS */}
-                                        <div className="flex flex-col gap-3">
-
-                                            {/* BOUTONS ADMIN */}
-                                            {user?.role ===
-                                                "admin" && (
-                                                <div className="flex gap-3">
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            handleEdit(
-                                                                product
-                                                            )
-                                                        }
-                                                        disabled={
-                                                            deleting !==
-                                                                null ||
-                                                            addingToCart !==
-                                                                null
-                                                        }
-                                                        className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        Modifier
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            handleDelete(
-                                                                product.id
-                                                            )
-                                                        }
-                                                        disabled={
-                                                            deleting ===
-                                                                product.id ||
-                                                            addingToCart !==
-                                                                null
-                                                        }
-                                                        className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        {deleting ===
-                                                        product.id
-                                                            ? "Suppression..."
-                                                            : "Supprimer"}
-                                                    </button>
-
-                                                </div>
-                                            )}
-
-                                            {/* AJOUTER AU PANIER */}
-                                            {(user?.role ===
-                                                "admin" ||
-                                                user?.role ===
-                                                    "client") && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleAddToCart(
-                                                            product
-                                                        )
-                                                    }
-                                                    disabled={
-                                                        product.stock <=
-                                                            0 ||
-                                                        addingToCart ===
-                                                            product.id ||
-                                                        deleting !==
-                                                            null
-                                                    }
-                                                    className="w-full rounded-lg bg-green-600 px-4 py-2 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                    {addingToCart ===
-                                                    product.id
-                                                        ? "Ajout au panier..."
-                                                        : product.stock <=
-                                                            0
-                                                          ? "Rupture de stock"
-                                                          : "🛒 Ajouter au panier"}
-                                                </button>
-                                            )}
-
-                                        </div>
-
-                                    </article>
-                                )
-                            )}
-
-                        </div>
-                    )}
-
-                </section>
+                </div>
+              )}
 
             </div>
-        </main>
-    );
+          ))}
+        </div>
+      )}
+
+  </div>
+</main>
+);
 }
