@@ -41,11 +41,18 @@ interface Conversation {
     unread_count?: number;
 }
 
+interface CartItem {
+    id: number;
+    product_id: number;
+    quantity?: number;
+}
+
 interface ApiObjectResponse {
     message?: string;
     product?: Product;
     products?: Product[];
     unread_count?: number;
+    items?: CartItem[];
     errors?: Record<string, string[]>;
 }
 
@@ -75,8 +82,12 @@ export default function ProductsPage() {
     /*
      * COMPTEUR GLOBAL DES MESSAGES NON LUS
      */
-    const [unreadMessagesCount, setUnreadMessagesCount] =
-        useState(0);
+    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
+    /*
+     * COMPTEUR DU PANIER
+     */
+    const [cartCount, setCartCount] = useState(0);
 
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
@@ -260,9 +271,6 @@ export default function ProductsPage() {
 
     /*
      * RÉCUPÉRER LE COMPTEUR DES MESSAGES NON LUS
-     *
-     * Laravel retourne unread_count pour chaque conversation.
-     * On additionne tous les unread_count.
      */
     const fetchUnreadMessages = useCallback(async () => {
         const token = getToken();
@@ -295,8 +303,7 @@ export default function ProductsPage() {
                 );
             }
 
-            const data =
-                await response.json();
+            const data = await response.json();
 
             if (!Array.isArray(data)) {
                 setUnreadMessagesCount(0);
@@ -319,9 +326,7 @@ export default function ProductsPage() {
                     0
                 );
 
-            setUnreadMessagesCount(
-                totalUnread
-            );
+            setUnreadMessagesCount(totalUnread);
         } catch (err) {
             console.error(
                 "Erreur récupération compteur messages :",
@@ -331,9 +336,66 @@ export default function ProductsPage() {
     }, [forceLogout]);
 
     /*
+     * RÉCUPÉRER LE COMPTEUR DU PANIER
+     */
+    const fetchCartCount = useCallback(async () => {
+        const token = getToken();
+
+        if (!token) {
+            forceLogout();
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                `${API_URL}/cart`,
+                {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (response.status === 401) {
+                forceLogout();
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    "Impossible de récupérer le panier."
+                );
+            }
+
+            const data = await response.json();
+
+            const items = Array.isArray(data?.items)
+                ? data.items
+                : [];
+
+            const totalQuantity = items.reduce(
+                (
+                    total: number,
+                    item: CartItem
+                ) =>
+                    total +
+                    (Number(item.quantity) || 0),
+                0
+            );
+
+            setCartCount(totalQuantity);
+        } catch (err) {
+            console.error(
+                "Erreur récupération compteur panier :",
+                err
+            );
+        }
+    }, [forceLogout]);
+
+    /*
      * RÉCUPÉRER LES PRODUITS
-     *
-     * ADMIN ET CLIENT PEUVENT VOIR LES PRODUITS.
      */
     const fetchProducts = useCallback(async () => {
         const token = getToken();
@@ -420,11 +482,13 @@ export default function ProductsPage() {
         fetchProducts();
         fetchUnreadNotifications();
         fetchUnreadMessages();
+        fetchCartCount();
     }, [
         checkingAuth,
         fetchProducts,
         fetchUnreadNotifications,
         fetchUnreadMessages,
+        fetchCartCount,
     ]);
 
     /*
@@ -480,8 +544,10 @@ export default function ProductsPage() {
             const name = form.name.trim();
             const description =
                 form.description.trim();
+
             const priceValue =
                 form.price.trim();
+
             const stockValue =
                 form.stock.trim();
 
@@ -557,8 +623,7 @@ export default function ProductsPage() {
                     body: JSON.stringify({
                         name,
                         description:
-                            description ||
-                            null,
+                            description || null,
                         price,
                         stock,
                     }),
@@ -582,9 +647,7 @@ export default function ProductsPage() {
                 data.errors
             ) {
                 const validationErrors =
-                    Object.values(
-                        data.errors
-                    )
+                    Object.values(data.errors)
                         .flat()
                         .join(" ");
 
@@ -880,6 +943,11 @@ export default function ProductsPage() {
                 );
             }
 
+            /*
+             * METTRE À JOUR LE COMPTEUR DU PANIER
+             */
+            await fetchCartCount();
+
             setSuccess(
                 `"${product.name}" a été ajouté au panier.`
             );
@@ -937,7 +1005,17 @@ export default function ProductsPage() {
                             onClick={pushPanier}
                             className="relative flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
                         >
-                            🛒 Panier
+                            <span>
+                                🛒 Panier
+                            </span>
+
+                            {cartCount > 0 && (
+                                <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white shadow-lg">
+                                    {cartCount > 99
+                                        ? "99+"
+                                        : cartCount}
+                                </span>
+                            )}
                         </button>
 
                         {/* MESSAGERIES */}
@@ -1342,6 +1420,7 @@ export default function ProductsPage() {
                     )}
 
                 </section>
+
             </div>
         </main>
     );

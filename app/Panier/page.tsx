@@ -181,7 +181,14 @@ export default function PanierPage() {
     item: CartItem,
     newQuantity: number
   ) => {
-    if (newQuantity < 1) {
+    // Si la quantité arrive à 0,
+    // on retire complètement l'article du panier.
+    if (newQuantity === 0) {
+      await removeItem(item.id);
+      return;
+    }
+
+    if (newQuantity < 0) {
       return;
     }
 
@@ -366,6 +373,7 @@ export default function PanierPage() {
       }
     } finally {
       setRemovingItem(null);
+      setUpdatingItem(null);
     }
   };
 
@@ -768,19 +776,23 @@ export default function PanierPage() {
                           )
                         }
                         disabled={
-                          item.quantity <=
-                            1 ||
                           isUpdating ||
                           buying ||
                           isRemoving
                         }
                         className="h-9 w-9 rounded-lg bg-gray-800 transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                          item.quantity === 1
+                            ? "Retirer l'article du panier"
+                            : "Diminuer la quantité"
+                        }
                       >
                         −
                       </button>
 
                       <span className="w-8 text-center font-semibold">
-                        {isUpdating
+                        {isUpdating ||
+                        isRemoving
                           ? "..."
                           : item.quantity}
                       </span>
@@ -830,7 +842,8 @@ export default function PanierPage() {
                       }
                       disabled={
                         isRemoving ||
-                        buying
+                        buying ||
+                        isUpdating
                       }
                       className="rounded-lg px-3 py-2 text-red-400 transition hover:bg-red-900/20 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
                     >

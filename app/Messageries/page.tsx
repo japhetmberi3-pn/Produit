@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useRef,
   useState,
   type KeyboardEvent,
 } from "react";
@@ -68,6 +69,12 @@ export default function MessageriesPage() {
 
   const [deletingConversation, setDeletingConversation] =
     useState(false);
+
+  /*
+   * Référence vers la fin de la liste des messages.
+   */
+  const messagesEndRef =
+    useRef<HTMLDivElement | null>(null);
 
   /*
    * Récupérer l'utilisateur connecté
@@ -436,9 +443,6 @@ export default function MessageriesPage() {
 
   /*
    * Fermer la discussion ouverte.
-   *
-   * La conversation reste dans la liste.
-   * Aucun message n'est supprimé.
    */
   const handleCloseConversation = () => {
     setSelectedConversation(null);
@@ -498,7 +502,6 @@ export default function MessageriesPage() {
 
       /*
        * Retirer la conversation de la liste
-       * uniquement chez l'utilisateur actuel.
        */
       setConversations(
         (currentConversations) =>
@@ -569,6 +572,23 @@ export default function MessageriesPage() {
 
     fetchMessages();
   }, [selectedConversation]);
+
+  /*
+   * Aller directement au dernier message.
+   *
+   * Aucun défilement visible :
+   * la conversation arrive directement en bas.
+   */
+  useEffect(() => {
+    if (!selectedConversation || messages.length === 0) {
+      return;
+    }
+
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "instant",
+      block: "end",
+    });
+  }, [messages, selectedConversation]);
 
   /*
    * Echo + présence + temps réel
@@ -941,9 +961,6 @@ export default function MessageriesPage() {
 
   /*
    * Recherche des conversations par nom.
-   *
-   * Pour l'administrateur, on recherche le nom
-   * de l'utilisateur avec lequel il discute.
    */
   const filteredConversations =
     conversations.filter((conversation) => {
@@ -978,7 +995,6 @@ export default function MessageriesPage() {
 
           <div className="border-b border-gray-800 p-5">
 
-            {/* TITRE */}
             <div>
               <h1 className="text-2xl font-bold text-blue-500">
                 Messageries
@@ -988,10 +1004,6 @@ export default function MessageriesPage() {
             <p className="mt-1 text-sm text-gray-400">
               Vos conversations
             </p>
-
-            {/* =========================
-                RECHERCHE ADMIN
-            ========================== */}
 
             {isAdmin && (
               <div className="mt-4">
@@ -1017,10 +1029,6 @@ export default function MessageriesPage() {
               + Nouvelle conversation
             </button>
           </div>
-
-          {/* =========================
-              CHOIX ADMIN
-          ========================== */}
 
           {showAdminList && (
             <div className="border-b border-gray-800 bg-gray-900 p-4">
@@ -1082,10 +1090,6 @@ export default function MessageriesPage() {
               )}
             </div>
           )}
-
-          {/* =========================
-              CONVERSATIONS
-          ========================== */}
 
           <div className="overflow-y-auto">
             {loading ? (
@@ -1245,10 +1249,6 @@ export default function MessageriesPage() {
                   </p>
                 </div>
 
-                {/* =========================
-                    BOUTON FERMER
-                ========================== */}
-
                 <button
                   type="button"
                   onClick={
@@ -1258,10 +1258,6 @@ export default function MessageriesPage() {
                 >
                   Fermer
                 </button>
-
-                {/* =========================
-                    BOUTON SUPPRIMER
-                ========================== */}
 
                 <button
                   type="button"
@@ -1288,77 +1284,81 @@ export default function MessageriesPage() {
                     Aucun message.
                   </div>
                 ) : (
-                  messages.map((message) => {
-                    const isMine =
-                      message.sender_id ===
-                      currentUserId;
+                  <>
+                    {messages.map((message) => {
+                      const isMine =
+                        message.sender_id ===
+                        currentUserId;
 
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex ${
-                          isMine
-                            ? "justify-end"
-                            : "justify-start"
-                        }`}
-                        onMouseEnter={() =>
-                          handleMarkAsRead(
-                            message
-                          )
-                        }
-                      >
+                      return (
                         <div
-                          className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                          key={message.id}
+                          className={`flex ${
                             isMine
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-800 text-gray-100"
+                              ? "justify-end"
+                              : "justify-start"
                           }`}
+                          onMouseEnter={() =>
+                            handleMarkAsRead(
+                              message
+                            )
+                          }
                         >
-                          <p className="break-words">
-                            {message.message}
-                          </p>
+                          <div
+                            className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                              isMine
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-800 text-gray-100"
+                            }`}
+                          >
+                            <p className="break-words">
+                              {message.message}
+                            </p>
 
-                          <div className="mt-1 flex items-center justify-end gap-2 text-xs opacity-70">
-                            <span>
-                              {new Date(
-                                message.created_at
-                              ).toLocaleTimeString(
-                                "fr-FR",
-                                {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }
-                              )}
-                            </span>
-
-                            {isMine && (
+                            <div className="mt-1 flex items-center justify-end gap-2 text-xs opacity-70">
                               <span>
-                                {message.read_at
-                                  ? "✓✓"
-                                  : "✓"}
+                                {new Date(
+                                  message.created_at
+                                ).toLocaleTimeString(
+                                  "fr-FR",
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  }
+                                )}
                               </span>
+
+                              {isMine && (
+                                <span>
+                                  {message.read_at
+                                    ? "✓✓"
+                                    : "✓"}
+                                </span>
+                              )}
+                            </div>
+
+                            {(isMine ||
+                              selectedConversation.admin_id ===
+                                currentUserId) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteMessage(
+                                    message
+                                  )
+                                }
+                                className="mt-2 text-xs text-red-300 hover:text-red-100"
+                              >
+                                Supprimer
+                              </button>
                             )}
                           </div>
-
-                          {(isMine ||
-                            selectedConversation.admin_id ===
-                              currentUserId) && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDeleteMessage(
-                                  message
-                                )
-                              }
-                              className="mt-2 text-xs text-red-300 hover:text-red-100"
-                            >
-                              Supprimer
-                            </button>
-                          )}
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+
+                    <div ref={messagesEndRef} />
+                  </>
                 )}
               </div>
 
