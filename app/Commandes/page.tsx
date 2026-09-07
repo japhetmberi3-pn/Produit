@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import AnimatedContainer from "@/app/components/AnimatedContainer";
 
 interface Product {
     id: number;
