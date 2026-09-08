@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AnimatedContainer from "@/app/components/AnimatedContainer";
 
@@ -629,15 +630,23 @@ export default function ProduitsPage() {
 
             <div className="flex flex-wrap gap-3">
 
-              <button
-                onClick={() =>
-                  router.push("/Boutique")
-                }
+              {/* LIEN BOUTIQUES */}
+              <Link
+                href="/Boutique"
                 className="rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-700"
               >
                 🏪 Boutiques
-              </button>
+              </Link>
 
+              {/* LIEN COMMANDES */}
+              <Link
+                href="/Commandes"
+                className="rounded-lg border border-gray-700 bg-gray-950 px-5 py-3 font-semibold transition hover:border-blue-500"
+              >
+                📦 Commandes
+              </Link>
+
+              {/* PANIER */}
               <button
                 onClick={() =>
                   router.push("/Panier")
@@ -653,6 +662,7 @@ export default function ProduitsPage() {
                 )}
               </button>
 
+              {/* NOTIFICATIONS */}
               <button
                 onClick={() =>
                   router.push("/Notifications")
@@ -668,6 +678,7 @@ export default function ProduitsPage() {
                 )}
               </button>
 
+              {/* MESSAGES */}
               <button
                 onClick={() =>
                   router.push("/Messageries")

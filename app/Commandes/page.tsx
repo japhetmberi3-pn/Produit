@@ -1,446 +1,1337 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import AnimatedContainer from "@/app/components/AnimatedContainer";
 
 interface Product {
-    id: number;
-    name: string;
-    description: string | null;
-    price: number;
-    stock: number;
+  id: number;
+  name: string;
+  description?: string | null;
+  price: number | string;
+  stock: number;
+}
+
+interface OrderItem {
+  id: number;
+  product_id: number;
+  quantity: number;
+  price: number | string;
+  product?: Product | null;
 }
 
 interface Order {
-    id: number;
-    product_id: number;
-    quantity: number;
-    status: string;
-    product?: Product;
+  id: number;
+  user_id: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  items: OrderItem[];
+  appointment_date?: string | null;
+  appointment_time?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  message?: string | null;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8000/api";
 
-export default function OrdersPage() {
-    const router = useRouter();
+export default function CommandesPage() {
+  const router = useRouter();
 
-    const [products, setProducts] = useState<Product[]>([]);
-    const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
 
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [quantity, setQuantity] = useState("1");
+  const [selectedProduct, setSelectedProduct] =
+    useState<Product | null>(null);
 
-    const [loading, setLoading] = useState(true);
-    const [buying, setBuying] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
-    const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
+  // Informations du rendez-vous
+  const [appointmentDate, setAppointmentDate] =
+    useState("");
 
-    const getToken = () => localStorage.getItem("token");
+  const [appointmentTime, setAppointmentTime] =
+    useState("");
 
-    /*
-     * Déconnexion forcée (token invalide/expiré)
-     */
-    const forceLogout = useCallback(() => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        router.push("/");
-    }, [router]);
+  const [phone, setPhone] = useState("");
 
-    /*
-     * RÉCUPÉRER LES PRODUITS
-     */
-    const fetchProducts = useCallback(async () => {
-        const token = getToken();
-        if (!token) return;
+  const [address, setAddress] = useState("");
 
-        try {
-            const response = await fetch(`${API_URL}/products`, {
-                method: "GET",
-                headers: {
-                    Accept: "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-            });
+  const [message, setMessage] = useState("");
 
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
+  const [loading, setLoading] = useState(true);
+  const [buying, setBuying] = useState(false);
 
-            const data = await response.json();
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Impossible de récupérer les produits."
-                );
-            }
+  /*
+  |--------------------------------------------------------------------------
+  | TOKEN
+  |--------------------------------------------------------------------------
+  */
 
-            setProducts(Array.isArray(data) ? data : data.products || []);
-        } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Impossible de récupérer les produits."
-            );
+  const getToken = () => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    return localStorage.getItem("token");
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+
+    router.push("/");
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | RÉCUPÉRER LES PRODUITS
+  | GET /api/products
+  |--------------------------------------------------------------------------
+  */
+
+  const fetchProducts = async () => {
+    const token = getToken();
+
+    if (!token) {
+      logout();
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/products`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         }
-    }, [forceLogout]);
+      );
 
-    /*
-     * RÉCUPÉRER LES COMMANDES
-     */
-    const fetchOrders = useCallback(async () => {
-        const token = getToken();
-        if (!token) return;
+      if (response.status === 401) {
+        logout();
+        return;
+      }
 
-        try {
-            const response = await fetch(`${API_URL}/orders`, {
-                method: "GET",
-                headers: {
-                    Accept: "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-            });
+      const data = await response.json();
 
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
+      console.log("Produits reçus :", data);
 
-            const data = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            "Impossible de récupérer les produits."
+        );
+      }
 
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Impossible de récupérer les commandes."
-                );
-            }
+      if (Array.isArray(data)) {
+        setProducts(data);
+      } else if (Array.isArray(data.products)) {
+        setProducts(data.products);
+      } else {
+        setProducts([]);
+      }
+    } catch (err) {
+      console.error(
+        "Erreur récupération produits :",
+        err
+      );
 
-            setOrders(Array.isArray(data) ? data : data.orders || []);
-        } catch (err) {
-            console.error("Erreur récupération commandes :", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible de récupérer les produits."
+      );
+    }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | RÉCUPÉRER LES COMMANDES
+  | GET /api/orders
+  |--------------------------------------------------------------------------
+  */
+
+  const fetchOrders = async () => {
+    const token = getToken();
+
+    if (!token) {
+      logout();
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/orders`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         }
-    }, [forceLogout]);
+      );
 
-    /*
-     * CHARGEMENT INITIAL
-     */
-    useEffect(() => {
-        const token = getToken();
+      if (response.status === 401) {
+        logout();
+        return;
+      }
 
-        if (!token) {
-            router.push("/");
-            return;
-        }
+      const data = await response.json();
 
-        const loadData = async () => {
-            setLoading(true);
-            await Promise.all([fetchProducts(), fetchOrders()]);
-            setLoading(false);
-        };
+      console.log("Commandes reçues :", data);
 
-        loadData();
-    }, [router, fetchProducts, fetchOrders]);
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            "Impossible de récupérer les commandes."
+        );
+      }
 
-    const handleSelectProduct = (product: Product) => {
-        setSelectedProduct(product);
-        setQuantity("1");
-        setError("");
-        setSuccess("");
+      if (Array.isArray(data)) {
+        setOrders(data);
+      } else if (Array.isArray(data.orders)) {
+        setOrders(data.orders);
+      } else {
+        setOrders([]);
+      }
+    } catch (err) {
+      console.error(
+        "Erreur récupération commandes :",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible de récupérer les commandes."
+      );
+    }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | CHARGEMENT INITIAL
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    const token = getToken();
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const load = async () => {
+      setLoading(true);
+
+      await Promise.all([
+        fetchProducts(),
+        fetchOrders(),
+      ]);
+
+      setLoading(false);
     };
 
-    /*
-     * CRÉER UNE COMMANDE
-     */
-    const handleOrder = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
+    load();
+  }, []);
 
-        const token = getToken();
+  /*
+  |--------------------------------------------------------------------------
+  | OUVRIR LE FORMULAIRE
+  |--------------------------------------------------------------------------
+  */
 
-        setError("");
-        setSuccess("");
+  const openOrderModal = (product: Product) => {
+    setSelectedProduct(product);
 
-        if (!token) {
-            forceLogout();
-            return;
+    setQuantity(1);
+
+    setAppointmentDate("");
+    setAppointmentTime("");
+    setPhone("");
+    setAddress("");
+    setMessage("");
+
+    setError("");
+    setSuccess("");
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | FERMER LE FORMULAIRE
+  |--------------------------------------------------------------------------
+  */
+
+  const closeOrderModal = () => {
+    if (buying) {
+      return;
+    }
+
+    setSelectedProduct(null);
+
+    setQuantity(1);
+
+    setAppointmentDate("");
+    setAppointmentTime("");
+    setPhone("");
+    setAddress("");
+    setMessage("");
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | CRÉER LA COMMANDE
+  | POST /api/orders
+  |--------------------------------------------------------------------------
+  */
+
+  const handleOrder = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    const token = getToken();
+
+    if (!token) {
+      logout();
+      return;
+    }
+
+    if (!selectedProduct) {
+      setError(
+        "Veuillez sélectionner un produit."
+      );
+      return;
+    }
+
+    if (quantity < 1) {
+      setError(
+        "La quantité doit être supérieure à 0."
+      );
+      return;
+    }
+
+    if (quantity > selectedProduct.stock) {
+      setError(
+        `Stock insuffisant. Il reste ${selectedProduct.stock} produit(s).`
+      );
+      return;
+    }
+
+    if (!appointmentDate) {
+      setError(
+        "Veuillez sélectionner une date de rendez-vous."
+      );
+      return;
+    }
+
+    if (!appointmentTime) {
+      setError(
+        "Veuillez sélectionner une heure de rendez-vous."
+      );
+      return;
+    }
+
+    if (!phone.trim()) {
+      setError(
+        "Veuillez renseigner votre numéro de téléphone."
+      );
+      return;
+    }
+
+    if (!address.trim()) {
+      setError(
+        "Veuillez renseigner l'adresse."
+      );
+      return;
+    }
+
+    setBuying(true);
+
+    try {
+      /*
+       * DONNÉES ENVOYÉES À LARAVEL
+       */
+      const orderData = {
+        items: [
+          {
+            product_id: selectedProduct.id,
+            quantity: quantity,
+          },
+        ],
+
+        appointment_date: appointmentDate,
+        appointment_time: appointmentTime,
+        phone: phone.trim(),
+        address: address.trim(),
+        message: message.trim() || null,
+      };
+
+      console.log(
+        "================================="
+      );
+
+      console.log(
+        "📦 COMMANDE + RENDEZ-VOUS"
+      );
+
+      console.log(orderData);
+
+      console.log(
+        "================================="
+      );
+
+      const response = await fetch(
+        `${API_URL}/orders`,
+        {
+          method: "POST",
+
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify(orderData),
         }
+      );
 
-        if (!selectedProduct) {
-            setError("Veuillez sélectionner un produit.");
-            return;
-        }
+      const data = await response.json();
 
-        const requestedQuantity = Number(quantity);
+      console.log(
+        "📡 Status Laravel :",
+        response.status
+      );
 
-        if (!Number.isInteger(requestedQuantity) || requestedQuantity < 1) {
-            setError("La quantité doit être un nombre entier supérieur à 0.");
-            return;
-        }
+      console.log(
+        "📡 Réponse Laravel :",
+        data
+      );
 
-        if (requestedQuantity > selectedProduct.stock) {
-            setError(
-                `Stock insuffisant. Il reste seulement ${selectedProduct.stock} produit(s).`
+      /*
+       * TOKEN EXPIRÉ
+       */
+
+      if (response.status === 401) {
+        logout();
+        return;
+      }
+
+      /*
+       * ERREUR LARAVEL
+       */
+
+      if (!response.ok) {
+
+        if (data.errors) {
+          const firstError =
+            Object.values(data.errors)[0];
+
+          if (
+            Array.isArray(firstError) &&
+            firstError.length > 0
+          ) {
+            throw new Error(
+              String(firstError[0])
             );
-            return;
+          }
         }
 
-        setBuying(true);
+        throw new Error(
+          data.message ||
+            `Erreur Laravel ${response.status}`
+        );
+      }
 
-        try {
-            const response = await fetch(`${API_URL}/orders`, {
-                method: "POST",
-                headers: {
-                    Accept: "application/json",
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    product_id: selectedProduct.id,
-                    quantity: requestedQuantity,
-                }),
-            });
+      /*
+       * VÉRIFIER LA COMMANDE
+       */
 
-            if (response.status === 401) {
-                forceLogout();
-                return;
-            }
+      if (!data.order) {
+        throw new Error(
+          "Laravel n'a pas retourné la commande."
+        );
+      }
 
-            const data = await response.json();
+      /*
+       * AJOUTER LA COMMANDE
+       */
 
-            if (!response.ok) {
-                if (data.errors) {
-                    const firstError = Object.values(data.errors)[0];
-                    if (Array.isArray(firstError)) {
-                        throw new Error(String(firstError[0]));
-                    }
-                }
+      setOrders((currentOrders) => [
+        data.order,
+        ...currentOrders,
+      ]);
 
-                throw new Error(data.message || "Impossible d'effectuer l'achat.");
-            }
+      /*
+       * METTRE À JOUR LE STOCK
+       */
 
-            if (!data.order) {
-                throw new Error("Laravel n'a pas retourné la commande créée.");
-            }
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          product.id === selectedProduct.id
+            ? {
+                ...product,
+                stock:
+                  product.stock - quantity,
+              }
+            : product
+        )
+      );
 
-            setOrders((currentOrders) => [data.order, ...currentOrders]);
+      /*
+       * MESSAGE DE SUCCÈS
+       */
 
-            setProducts((currentProducts) =>
-                currentProducts.map((product) =>
-                    product.id === selectedProduct.id
-                        ? { ...product, stock: product.stock - requestedQuantity }
-                        : product
-                )
-            );
+      setSuccess(
+        `Commande #${data.order.id} créée avec succès ! Rendez-vous prévu le ${new Date(
+          appointmentDate
+        ).toLocaleDateString("fr-FR")} à ${appointmentTime}.`
+      );
 
-            setSuccess("Achat effectué avec succès !");
-            setSelectedProduct(null);
-            setQuantity("1");
-        } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Une erreur est survenue lors de l'achat."
-            );
-        } finally {
-            setBuying(false);
-        }
-    };
+      /*
+       * FERMER LE FORMULAIRE
+       */
 
+      setSelectedProduct(null);
+
+      setQuantity(1);
+
+      setAppointmentDate("");
+      setAppointmentTime("");
+      setPhone("");
+      setAddress("");
+      setMessage("");
+
+    } catch (err) {
+
+      console.error(
+        "Erreur création commande :",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur est survenue lors de la création de la commande."
+      );
+
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | STATUT
+  |--------------------------------------------------------------------------
+  */
+
+  const getStatusLabel = (
+    status: string
+  ) => {
+    switch (status) {
+
+      case "pending":
+        return "En attente";
+
+      case "confirmed":
+        return "Confirmée";
+
+      case "shipped":
+        return "Expédiée";
+
+      case "delivered":
+        return "Livrée";
+
+      case "cancelled":
+        return "Annulée";
+
+      case "completed":
+        return "Terminée";
+
+      default:
+        return status;
+    }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | COULEUR STATUT
+  |--------------------------------------------------------------------------
+  */
+
+  const getStatusClass = (
+    status: string
+  ) => {
+    switch (status) {
+
+      case "pending":
+        return "bg-yellow-500/20 text-yellow-400";
+
+      case "confirmed":
+        return "bg-blue-500/20 text-blue-400";
+
+      case "shipped":
+        return "bg-indigo-500/20 text-indigo-400";
+
+      case "delivered":
+      case "completed":
+        return "bg-green-500/20 text-green-400";
+
+      case "cancelled":
+        return "bg-red-500/20 text-red-400";
+
+      default:
+        return "bg-gray-500/20 text-gray-400";
+    }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | TOTAL
+  |--------------------------------------------------------------------------
+  */
+
+  const calculateTotal = (
+    order: Order
+  ) => {
+
+    if (!Array.isArray(order.items)) {
+      return 0;
+    }
+
+    return order.items.reduce(
+      (total, item) =>
+        total +
+        Number(item.price) *
+          Number(item.quantity),
+      0
+    );
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOADING
+  |--------------------------------------------------------------------------
+  */
+
+  if (loading) {
     return (
-        <main className="min-h-screen bg-black px-6 py-10 text-white">
-            <div className="mx-auto max-w-6xl">
-                <div className="mb-8">
-                    <h1 className="text-4xl font-bold">Commandes</h1>
-                    <p className="mt-2 text-gray-400">
-                        Choisissez un produit et effectuez votre achat.
-                    </p>
+      <main className="min-h-screen bg-black px-6 py-10 text-white">
+
+        <div className="flex min-h-[60vh] items-center justify-center">
+
+          <p className="text-lg text-gray-400">
+            Chargement...
+          </p>
+
+        </div>
+
+      </main>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | PAGE
+  |--------------------------------------------------------------------------
+  */
+
+  return (
+    <main className="min-h-screen bg-black px-6 py-10 text-white">
+
+      <div className="mx-auto max-w-6xl">
+
+        {/* TITRE */}
+
+        <div className="mb-8">
+
+          <h1 className="text-3xl font-bold text-blue-400">
+            Commandes
+          </h1>
+
+          <p className="mt-2 text-gray-400">
+            Choisissez un produit et prenez rendez-vous pour votre commande.
+          </p>
+
+        </div>
+
+        {/* ERREUR */}
+
+        {error && (
+
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+
+            {error}
+
+          </div>
+
+        )}
+
+        {/* SUCCÈS */}
+
+        {success && (
+
+          <div className="mb-6 rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-green-400">
+
+            {success}
+
+          </div>
+
+        )}
+
+        {/* PRODUITS */}
+
+        <section>
+
+          <h2 className="mb-5 text-2xl font-semibold">
+            Produits disponibles
+          </h2>
+
+          {products.length === 0 ? (
+
+            <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center">
+
+              <div className="mb-4 text-5xl">
+                🛍️
+              </div>
+
+              <h3 className="text-xl font-semibold">
+                Aucun produit disponible
+              </h3>
+
+              <p className="mt-2 text-gray-400">
+                Aucun produit n'est actuellement disponible.
+              </p>
+
+            </div>
+
+          ) : (
+
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+
+              {products.map((product) => (
+
+                <article
+                  key={product.id}
+                  className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl transition hover:border-blue-500/40"
+                >
+
+                  <h3 className="text-xl font-bold">
+                    {product.name}
+                  </h3>
+
+                  <p className="mt-2 min-h-[24px] text-sm text-gray-400">
+                    {product.description ||
+                      "Aucune description."}
+                  </p>
+
+                  <div className="my-5 flex items-center justify-between">
+
+                    <div>
+
+                      <p className="text-sm text-gray-500">
+                        Prix
+                      </p>
+
+                      <p className="text-xl font-bold text-blue-400">
+
+                        {Number(
+                          product.price
+                        ).toLocaleString(
+                          "fr-FR"
+                        )}{" "}
+
+                        FCFA
+
+                      </p>
+
+                    </div>
+
+                    <div className="text-right">
+
+                      <p className="text-sm text-gray-500">
+                        Stock
+                      </p>
+
+                      <p
+                        className={
+                          product.stock > 0
+                            ? "font-semibold text-green-400"
+                            : "font-semibold text-red-400"
+                        }
+                      >
+                        {product.stock}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={product.stock <= 0}
+                    onClick={() =>
+                      openOrderModal(product)
+                    }
+                    className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
+                  >
+                    {product.stock > 0
+                      ? "Commander"
+                      : "Rupture de stock"}
+                  </button>
+
+                </article>
+
+              ))}
+
+            </div>
+
+          )}
+
+        </section>
+
+        {/* MES COMMANDES */}
+
+        <section className="mt-12">
+
+          <h2 className="mb-5 text-2xl font-semibold">
+            Mes commandes
+          </h2>
+
+          {orders.length === 0 ? (
+
+            <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center">
+
+              <div className="mb-4 text-5xl">
+                📦
+              </div>
+
+              <h3 className="text-xl font-semibold">
+                Aucune commande
+              </h3>
+
+              <p className="mt-2 text-gray-400">
+                Vous n'avez encore effectué aucune commande.
+              </p>
+
+            </div>
+
+          ) : (
+
+            <div className="space-y-5">
+
+              {orders.map((order) => (
+
+                <div
+                  key={order.id}
+                  className="rounded-2xl border border-gray-800 bg-gray-900 p-6"
+                >
+
+                  <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+
+                    <div>
+
+                      <h3 className="text-xl font-semibold">
+                        Commande #{order.id}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-gray-400">
+
+                        {new Date(
+                          order.created_at
+                        ).toLocaleDateString(
+                          "fr-FR"
+                        )}
+
+                      </p>
+
+                    </div>
+
+                    <span
+                      className={`rounded-full px-4 py-2 text-sm font-medium ${getStatusClass(
+                        order.status
+                      )}`}
+                    >
+                      {getStatusLabel(
+                        order.status
+                      )}
+                    </span>
+
+                  </div>
+
+                  <div className="space-y-3">
+
+                    {order.items?.map((item) => (
+
+                      <div
+                        key={item.id}
+                        className="flex flex-col gap-2 border-b border-gray-800 pb-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+
+                        <div>
+
+                          <p className="font-medium">
+                            {item.product?.name ||
+                              `Produit #${item.product_id}`}
+                          </p>
+
+                          <p className="text-sm text-gray-400">
+                            Quantité :{" "}
+                            {item.quantity}
+                          </p>
+
+                          <p className="text-sm text-gray-500">
+
+                            Prix unitaire :{" "}
+
+                            {Number(
+                              item.price
+                            ).toLocaleString(
+                              "fr-FR"
+                            )}{" "}
+
+                            FCFA
+
+                          </p>
+
+                        </div>
+
+                        <p className="font-semibold text-blue-400">
+
+                          {(
+                            Number(item.price) *
+                            Number(item.quantity)
+                          ).toLocaleString(
+                            "fr-FR"
+                          )}{" "}
+
+                          FCFA
+
+                        </p>
+
+                      </div>
+
+                    ))}
+
+                  </div>
+
+                  {/* RENDEZ-VOUS */}
+
+                  {order.appointment_date && (
+
+                    <div className="mt-5 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+
+                      <h4 className="mb-3 font-semibold text-blue-400">
+                        📅 Rendez-vous
+                      </h4>
+
+                      <div className="grid gap-2 text-sm text-gray-300 md:grid-cols-2">
+
+                        <p>
+                          <span className="text-gray-500">
+                            Date :
+                          </span>{" "}
+                          {new Date(
+                            order.appointment_date
+                          ).toLocaleDateString(
+                            "fr-FR"
+                          )}
+                        </p>
+
+                        <p>
+                          <span className="text-gray-500">
+                            Heure :
+                          </span>{" "}
+                          {order.appointment_time}
+                        </p>
+
+                        {order.phone && (
+
+                          <p>
+                            <span className="text-gray-500">
+                              Téléphone :
+                            </span>{" "}
+                            {order.phone}
+                          </p>
+
+                        )}
+
+                        {order.address && (
+
+                          <p>
+                            <span className="text-gray-500">
+                              Adresse :
+                            </span>{" "}
+                            {order.address}
+                          </p>
+
+                        )}
+
+                      </div>
+
+                      {order.message && (
+
+                        <p className="mt-3 text-sm text-gray-400">
+
+                          <span className="text-gray-500">
+                            Remarque :
+                          </span>{" "}
+
+                          {order.message}
+
+                        </p>
+
+                      )}
+
+                    </div>
+
+                  )}
+
+                  <div className="mt-5 border-t border-gray-800 pt-5">
+
+                    <span className="text-gray-400">
+                      Total :
+                    </span>{" "}
+
+                    <span className="text-xl font-bold text-blue-400">
+
+                      {calculateTotal(
+                        order
+                      ).toLocaleString(
+                        "fr-FR"
+                      )}{" "}
+
+                      FCFA
+
+                    </span>
+
+                  </div>
+
                 </div>
 
-                {error && (
-                    <div className="mb-6 rounded-xl border border-red-700 bg-red-900/30 p-4 text-red-400">
-                        {error}
-                    </div>
-                )}
+              ))}
 
-                {success && (
-                    <div className="mb-6 rounded-xl border border-green-700 bg-green-900/30 p-4 text-green-400">
-                        {success}
-                    </div>
-                )}
-
-                {loading ? (
-                    <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center text-gray-400">
-                        Chargement...
-                    </div>
-                ) : products.length === 0 ? (
-                    <div className="rounded-2xl border border-gray-800 bg-gray-900 p-10 text-center">
-                        <div className="mb-4 text-5xl">🛍️</div>
-                        <h2 className="text-xl font-semibold">
-                            Aucun produit disponible
-                        </h2>
-                        <p className="mt-2 text-gray-400">
-                            Aucun produit n'est actuellement disponible.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {products.map((product) => (
-                            <article
-                                key={product.id}
-                                className="rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-xl"
-                            >
-                                <h2 className="text-xl font-bold">{product.name}</h2>
-
-                                <p className="mt-2 text-sm text-gray-400">
-                                    {product.description || "Aucune description."}
-                                </p>
-
-                                <div className="my-5 flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm text-gray-500">Prix</p>
-                                        <p className="text-xl font-bold text-blue-400">
-                                            {Number(product.price).toLocaleString("fr-FR")}{" "}
-                                            FCFA
-                                        </p>
-                                    </div>
-
-                                    <div className="text-right">
-                                        <p className="text-sm text-gray-500">Stock</p>
-                                        <p
-                                            className={
-                                                product.stock > 0
-                                                    ? "font-semibold text-green-400"
-                                                    : "font-semibold text-red-400"
-                                            }
-                                        >
-                                            {product.stock}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    disabled={product.stock <= 0}
-                                    onClick={() => handleSelectProduct(product)}
-                                    className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
-                                >
-                                    {product.stock > 0 ? "Acheter" : "Rupture de stock"}
-                                </button>
-                            </article>
-                        ))}
-                    </div>
-                )}
-
-                {selectedProduct && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
-                        <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 p-7 shadow-2xl">
-                            <h2 className="text-2xl font-bold">
-                                Acheter {selectedProduct.name}
-                            </h2>
-
-                            <p className="mt-2 text-gray-400">
-                                Prix unitaire :{" "}
-                                {Number(selectedProduct.price).toLocaleString("fr-FR")}{" "}
-                                FCFA
-                            </p>
-
-                            <p className="mt-1 text-sm text-gray-500">
-                                Stock disponible : {selectedProduct.stock}
-                            </p>
-
-                            <form onSubmit={handleOrder} className="mt-6 space-y-5">
-                                <div>
-                                    <label
-                                        htmlFor="quantity"
-                                        className="mb-2 block text-sm font-medium text-gray-300"
-                                    >
-                                        Quantité
-                                    </label>
-
-                                    <input
-                                        id="quantity"
-                                        type="number"
-                                        min="1"
-                                        max={selectedProduct.stock}
-                                        value={quantity}
-                                        onChange={(event) => setQuantity(event.target.value)}
-                                        required
-                                        className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
-                                    />
-                                </div>
-
-                                <div className="rounded-lg bg-gray-800 p-4">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">Total</span>
-                                        <span className="font-bold text-blue-400">
-                                            {(
-                                                Number(selectedProduct.price) *
-                                                Number(quantity || 0)
-                                            ).toLocaleString("fr-FR")}{" "}
-                                            FCFA
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedProduct(null)}
-                                        disabled={buying}
-                                        className="flex-1 rounded-lg bg-gray-700 px-4 py-3 font-semibold transition hover:bg-gray-600 disabled:opacity-50"
-                                    >
-                                        Annuler
-                                    </button>
-
-                                    <button
-                                        type="submit"
-                                        disabled={buying}
-                                        className="flex-1 rounded-lg bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        {buying ? "Achat..." : "Confirmer"}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
-
-                {orders.length > 0 && (
-                    <section className="mt-12">
-                        <h2 className="mb-5 text-2xl font-semibold">Mes commandes</h2>
-
-                        <div className="space-y-4">
-                            {orders.map((order) => (
-                                <div
-                                    key={order.id}
-                                    className="rounded-xl border border-gray-800 bg-gray-900 p-5"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="font-semibold">
-                                                Commande #{order.id}
-                                            </p>
-
-                                            <p className="mt-1 text-sm text-gray-400">
-                                                Produit :{" "}
-                                                {order.product?.name || `#${order.product_id}`}
-                                            </p>
-
-                                            <p className="text-sm text-gray-400">
-                                                Quantité : {order.quantity}
-                                            </p>
-                                        </div>
-
-                                        <span className="rounded-full bg-green-900/40 px-3 py-1 text-sm font-semibold text-green-400">
-                                            {order.status}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                )}
             </div>
-        </main>
-    );
+
+          )}
+
+        </section>
+
+      </div>
+
+      {/* ========================================================= */}
+      {/* FORMULAIRE DE COMMANDE + RENDEZ-VOUS */}
+      {/* ========================================================= */}
+
+      {selectedProduct && (
+
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 px-4 py-8">
+
+          <div className="mx-auto w-full max-w-2xl rounded-2xl border border-gray-800 bg-gray-900 p-7 shadow-2xl">
+
+            {/* HEADER */}
+
+            <div className="mb-6">
+
+              <h2 className="text-2xl font-bold text-blue-400">
+                Passer une commande
+              </h2>
+
+              <p className="mt-2 text-gray-400">
+                Complétez les informations de votre commande et de votre rendez-vous.
+              </p>
+
+            </div>
+
+            {/* PRODUIT */}
+
+            <div className="mb-6 rounded-xl border border-gray-800 bg-gray-800/50 p-4">
+
+              <div className="flex items-center justify-between gap-4">
+
+                <div>
+
+                  <p className="font-semibold">
+                    {selectedProduct.name}
+                  </p>
+
+                  <p className="mt-1 text-sm text-gray-400">
+
+                    Prix unitaire :{" "}
+
+                    {Number(
+                      selectedProduct.price
+                    ).toLocaleString(
+                      "fr-FR"
+                    )}{" "}
+
+                    FCFA
+
+                  </p>
+
+                </div>
+
+                <p className="text-sm text-gray-400">
+
+                  Stock :{" "}
+                  {selectedProduct.stock}
+
+                </p>
+
+              </div>
+
+            </div>
+
+            <form
+              onSubmit={handleOrder}
+              className="space-y-5"
+            >
+
+              {/* QUANTITÉ */}
+
+              <div>
+
+                <label
+                  htmlFor="quantity"
+                  className="mb-2 block text-sm font-medium text-gray-300"
+                >
+                  Quantité
+                </label>
+
+                <input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  max={selectedProduct.stock}
+                  value={quantity}
+                  onChange={(event) =>
+                    setQuantity(
+                      Number(event.target.value)
+                    )
+                  }
+                  required
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              {/* DATE */}
+
+              <div>
+
+                <label
+                  htmlFor="appointment_date"
+                  className="mb-2 block text-sm font-medium text-gray-300"
+                >
+                  📅 Date du rendez-vous
+                </label>
+
+                <input
+                  id="appointment_date"
+                  type="date"
+                  value={appointmentDate}
+                  min={
+                    new Date()
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  onChange={(event) =>
+                    setAppointmentDate(
+                      event.target.value
+                    )
+                  }
+                  required
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              {/* HEURE */}
+
+              <div>
+
+                <label
+                  htmlFor="appointment_time"
+                  className="mb-2 block text-sm font-medium text-gray-300"
+                >
+                  🕐 Heure du rendez-vous
+                </label>
+
+                <input
+                  id="appointment_time"
+                  type="time"
+                  value={appointmentTime}
+                  onChange={(event) =>
+                    setAppointmentTime(
+                      event.target.value
+                    )
+                  }
+                  required
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              {/* TÉLÉPHONE */}
+
+              <div>
+
+                <label
+                  htmlFor="phone"
+                  className="mb-2 block text-sm font-medium text-gray-300"
+                >
+                  📞 Téléphone
+                </label>
+
+                <input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(event) =>
+                    setPhone(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Ex : 06 123 45 67"
+                  required
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              {/* ADRESSE */}
+
+              <div>
+
+                <label
+                  htmlFor="address"
+                  className="mb-2 block text-sm font-medium text-gray-300"
+                >
+                  📍 Adresse
+                </label>
+
+                <input
+                  id="address"
+                  type="text"
+                  value={address}
+                  onChange={(event) =>
+                    setAddress(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Votre adresse"
+                  required
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              {/* MESSAGE */}
+
+              <div>
+
+                <label
+                  htmlFor="message"
+                  className="mb-2 block text-sm font-medium text-gray-300"
+                >
+                  📝 Remarque
+                </label>
+
+                <textarea
+                  id="message"
+                  value={message}
+                  onChange={(event) =>
+                    setMessage(
+                      event.target.value
+                    )
+                  }
+                  rows={4}
+                  placeholder="Une précision concernant votre commande ou le rendez-vous..."
+                  className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white outline-none focus:border-blue-500"
+                />
+
+              </div>
+
+              {/* TOTAL */}
+
+              <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
+
+                <div className="flex items-center justify-between">
+
+                  <span className="text-gray-400">
+                    Total
+                  </span>
+
+                  <span className="text-xl font-bold text-blue-400">
+
+                    {(
+                      Number(
+                        selectedProduct.price
+                      ) * quantity
+                    ).toLocaleString(
+                      "fr-FR"
+                    )}{" "}
+
+                    FCFA
+
+                  </span>
+
+                </div>
+
+              </div>
+
+              {/* BOUTONS */}
+
+              <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+
+                <button
+                  type="button"
+                  onClick={closeOrderModal}
+                  disabled={buying}
+                  className="flex-1 rounded-lg bg-gray-700 px-4 py-3 font-semibold transition hover:bg-gray-600 disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={buying}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {buying
+                    ? "Création de la commande..."
+                    : "Confirmer la commande"}
+                </button>
+
+              </div>
+
+            </form>
+
+          </div>
+
+        </div>
+
+      )}
+
+    </main>
+  );
 }
