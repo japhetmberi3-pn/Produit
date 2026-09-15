@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AnimatedContainer from "@/app/components/AnimatedContainer";
 
 interface Product {
@@ -39,6 +40,13 @@ interface ApiResponse {
   errors?: Record<string, string[]>;
 }
 
+interface User {
+  id: number;
+  name: string;
+  email?: string;
+  role?: string;
+}
+
 export default function PanierPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
@@ -52,6 +60,8 @@ export default function PanierPage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const [user, setUser] = useState<User | null>(null);
 
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL ||
@@ -137,6 +147,17 @@ export default function PanierPage() {
   // =========================
 
   useEffect(() => {
+    const storedUser =
+      localStorage.getItem("user");
+
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        setUser(null);
+      }
+    }
+
     fetchCart();
   }, []);
 
@@ -282,9 +303,7 @@ export default function PanierPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(
-          "Une erreur est survenue."
-        );
+        setError("Une erreur est survenue.");
       }
     } finally {
       setUpdatingItem(null);
@@ -371,9 +390,7 @@ export default function PanierPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(
-          "Une erreur est survenue."
-        );
+        setError("Une erreur est survenue.");
       }
     } finally {
       setRemovingItem(null);
@@ -569,12 +586,24 @@ export default function PanierPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-white">
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020407] text-white">
+
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/[0.08] blur-[120px]" />
+
         <AnimatedContainer>
-          <p className="text-lg text-gray-400">
-            Chargement du panier...
-          </p>
+
+          <div className="relative text-center">
+
+            <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-blue-400 border-r-blue-400 shadow-[0_0_25px_rgba(37,99,235,0.3)]" />
+
+            <p className="text-sm text-zinc-500">
+              Chargement du panier...
+            </p>
+
+          </div>
+
         </AnimatedContainer>
+
       </main>
     );
   }
@@ -584,81 +613,397 @@ export default function PanierPage() {
   // =========================
 
   return (
-    <main className="min-h-screen bg-black px-6 py-10 text-white">
-      <div className="mx-auto max-w-5xl">
+    <main className="min-h-screen bg-[#020407] text-white">
 
-        {/* TITRE */}
-        <AnimatedContainer>
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* =====================================================
+          BACKGROUND ELECTRIC
+      ====================================================== */}
 
-            <h1 className="text-3xl font-bold">
-              🛒 Mon panier
-            </h1>
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
 
-            {items.length > 0 && (
-              <button
-                type="button"
-                onClick={toggleSelectAll}
-                disabled={buying}
-                className="text-blue-400 transition hover:text-blue-300 disabled:opacity-50"
-              >
-                {selectedItems.length ===
-                  items.length
-                  ? "Tout désélectionner"
-                  : "Tout sélectionner"}
-              </button>
-            )}
+        <div className="absolute left-[-15%] top-[-10%] h-[500px] w-[500px] rounded-full bg-blue-600/[0.08] blur-[140px]" />
+
+        <div className="absolute right-[-10%] top-[30%] h-[450px] w-[450px] rounded-full bg-cyan-400/[0.05] blur-[140px]" />
+
+        <div className="absolute bottom-[-15%] left-[30%] h-[450px] w-[450px] rounded-full bg-blue-500/[0.06] blur-[140px]" />
+
+      </div>
+
+      {/* =====================================================
+          NAVIGATION SHOPX
+      ====================================================== */}
+
+      <header className="sticky top-0 z-50 border-b border-blue-400/10 bg-[#020407]/95 backdrop-blur-2xl">
+
+        <div className="mx-auto flex h-[70px] max-w-7xl items-center gap-4 px-4 md:px-8">
+
+          {/* LOGO */}
+
+          <Link
+            href="/"
+            className="group flex shrink-0 items-center gap-3"
+          >
+
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-blue-400/40 bg-blue-500/10 shadow-[0_0_25px_rgba(37,99,235,0.2)]">
+
+              <span className="text-lg font-black italic text-blue-400">
+                X
+              </span>
+
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition duration-700 group-hover:translate-x-full" />
+
+            </div>
+
+            <div className="hidden sm:block">
+
+              <span className="block text-lg font-black tracking-wider">
+                SHOP
+                <span className="text-blue-400">
+                  X
+                </span>
+              </span>
+
+              <span className="block text-[8px] uppercase tracking-[0.35em] text-zinc-600">
+                Digital Store
+              </span>
+
+            </div>
+
+          </Link>
+
+          {/* NAVIGATION DESKTOP */}
+
+          <nav className="hidden flex-1 items-center justify-center gap-1 xl:flex">
+
+            <Link
+              href="/"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-blue-500/5 hover:text-white"
+            >
+              Accueil
+            </Link>
+
+            <Link
+              href="/Produits"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-blue-500/5 hover:text-white"
+            >
+              Produits
+            </Link>
+
+            <Link
+              href="/Boutique"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-blue-500/5 hover:text-white"
+            >
+              Boutiques
+            </Link>
+
+            <Link
+              href="/Commandes"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-blue-500/5 hover:text-white"
+            >
+              Commandes
+            </Link>
+
+            <Link
+              href="/Messageries"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-blue-500/5 hover:text-white"
+            >
+              Messages
+            </Link>
+
+            <Link
+              href="/Panier"
+              className="rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 py-2.5 text-sm font-bold text-blue-300 shadow-[0_0_20px_rgba(37,99,235,0.1)]"
+            >
+              Panier
+            </Link>
+
+          </nav>
+
+          {/* ACTIONS */}
+
+          <div className="ml-auto flex items-center gap-2">
+
+            {/* NOTIFICATIONS */}
+
+            <Link
+              href="/Notifications"
+              className="hidden h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-zinc-400 transition hover:border-blue-400/40 hover:bg-blue-500/10 hover:text-blue-300 sm:flex"
+              title="Notifications"
+            >
+              🔔
+            </Link>
+
+            {/* COMPTE */}
+
+            <Link
+              href="/Compte"
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-blue-400/30 hover:bg-blue-500/10"
+            >
+
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-[10px] font-black text-black shadow-[0_0_15px_rgba(37,99,235,0.3)]">
+                {user?.name
+                  ?.charAt(0)
+                  .toUpperCase() ?? "?"}
+              </span>
+
+              <span className="hidden text-sm font-semibold md:block">
+                Mon compte
+              </span>
+
+            </Link>
+
           </div>
+
+        </div>
+
+        {/* NAVIGATION MOBILE */}
+
+        <div className="border-t border-white/[0.04] xl:hidden">
+
+          <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-2 md:px-8">
+
+            <Link
+              href="/"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-zinc-500"
+            >
+              Accueil
+            </Link>
+
+            <Link
+              href="/Produits"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-zinc-500"
+            >
+              Produits
+            </Link>
+
+            <Link
+              href="/Boutique"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-zinc-500"
+            >
+              Boutiques
+            </Link>
+
+            <Link
+              href="/Commandes"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-zinc-500"
+            >
+              Commandes
+            </Link>
+
+            <Link
+              href="/Messageries"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-zinc-500"
+            >
+              Messages
+            </Link>
+
+            <Link
+              href="/Panier"
+              className="shrink-0 rounded-lg bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-300"
+            >
+              Panier
+            </Link>
+
+            <Link
+              href="/Notifications"
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-zinc-500"
+            >
+              Notifications
+            </Link>
+
+          </nav>
+
+        </div>
+
+      </header>
+
+      {/* =====================================================
+          CONTENU
+      ====================================================== */}
+
+      <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
+
+        {/* =================================================
+            TITRE
+        ================================================== */}
+
+        <AnimatedContainer>
+
+          <section className="relative mb-8 overflow-hidden rounded-3xl border border-blue-400/10 bg-gradient-to-br from-blue-500/[0.07] via-[#05070a] to-cyan-400/[0.04] p-7 shadow-[0_0_50px_rgba(37,99,235,0.04)] md:p-9">
+
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-500/[0.08] blur-[100px]" />
+
+            <div className="relative">
+
+              <div className="mb-4 flex items-center gap-2">
+
+                <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400 shadow-[0_0_14px_rgba(37,99,235,0.9)]" />
+
+                <span className="text-xs font-black uppercase tracking-[0.3em] text-blue-400">
+                  SHOPX CHECKOUT
+                </span>
+
+              </div>
+
+              <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+
+                <div>
+
+                  <h1 className="text-4xl font-black tracking-tight md:text-5xl">
+
+                    Mon{" "}
+
+                    <span className="bg-gradient-to-r from-blue-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                      panier
+                    </span>
+
+                  </h1>
+
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-500">
+                    Vérifiez vos articles, ajustez les
+                    quantités et passez votre commande.
+                  </p>
+
+                </div>
+
+                <div className="rounded-2xl border border-blue-400/15 bg-blue-500/[0.04] px-5 py-4">
+
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
+                    Articles
+                  </p>
+
+                  <p className="mt-1 text-2xl font-black text-blue-300">
+                    {items.length}
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </section>
+
         </AnimatedContainer>
 
-        {/* ERREUR */}
+        {/* =================================================
+            ERREUR
+        ================================================== */}
+
         {error && (
           <AnimatedContainer delay={0.1}>
-            <div className="mb-6 rounded-xl border border-red-700 bg-red-900/40 p-4 text-red-200">
+
+            <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-sm text-red-300 shadow-[0_0_25px_rgba(239,68,68,0.04)]">
               {error}
             </div>
+
           </AnimatedContainer>
         )}
 
-        {/* SUCCÈS */}
+        {/* =================================================
+            SUCCÈS
+        ================================================== */}
+
         {success && (
           <AnimatedContainer delay={0.1}>
-            <div className="mb-6 rounded-xl border border-green-700 bg-green-900/40 p-4 text-green-200">
+
+            <div className="mb-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 text-sm text-emerald-300">
               {success}
             </div>
+
           </AnimatedContainer>
         )}
 
-        {/* PANIER VIDE */}
-        {items.length === 0 ? (
-          <AnimatedContainer delay={0.2}>
-            <div className="rounded-xl border border-gray-800 bg-gray-900 p-10 text-center">
+        {/* =================================================
+            PANIER VIDE
+        ================================================== */}
 
-              <div className="mb-4 text-5xl">
+        {items.length === 0 ? (
+
+          <AnimatedContainer delay={0.2}>
+
+            <div className="rounded-3xl border border-white/[0.08] bg-[#05070a] p-14 text-center shadow-[0_0_40px_rgba(0,0,0,0.3)]">
+
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-blue-400/20 bg-blue-500/[0.06] text-3xl shadow-[0_0_30px_rgba(37,99,235,0.1)]">
                 🛒
               </div>
 
-              <p className="text-lg text-gray-400">
-                Votre panier est vide.
+              <h2 className="text-2xl font-black">
+                Votre panier est vide
+              </h2>
+
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-600">
+                Découvrez notre catalogue et ajoutez
+                vos produits préférés à votre panier.
               </p>
 
-              <button
-                type="button"
-                onClick={() =>
-                  (window.location.href =
-                    "/Produits")
-                }
-                className="mt-6 rounded-lg bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700"
+              <Link
+                href="/Produits"
+                className="mt-7 inline-flex rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 px-7 py-3.5 text-sm font-black text-white shadow-[0_0_25px_rgba(37,99,235,0.2)] transition hover:shadow-[0_0_40px_rgba(37,99,235,0.35)]"
               >
                 Voir les produits
-              </button>
-            </div>
-          </AnimatedContainer>
-        ) : (
-          <div className="space-y-4">
+              </Link>
 
-            {/* ARTICLES */}
+            </div>
+
+          </AnimatedContainer>
+
+        ) : (
+
+          <div className="space-y-5">
+
+            {/* =================================================
+                BARRE SÉLECTION
+            ================================================== */}
+
+            <AnimatedContainer delay={0.15}>
+
+              <div className="flex flex-col gap-4 rounded-2xl border border-white/[0.07] bg-[#05070a] p-4 sm:flex-row sm:items-center sm:justify-between">
+
+                <div className="flex items-center gap-3">
+
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/[0.06] text-blue-300">
+                    ✓
+                  </div>
+
+                  <div>
+
+                    <p className="text-sm font-bold">
+                      Sélection des articles
+                    </p>
+
+                    <p className="text-xs text-zinc-600">
+                      {selectedItems.length > 0
+                        ? `${selectedItems.length} article(s) sélectionné(s)`
+                        : "Tous les articles seront achetés"}
+                    </p>
+
+                  </div>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  disabled={buying}
+                  className="rounded-xl border border-blue-400/20 bg-blue-500/[0.04] px-4 py-2.5 text-xs font-bold text-blue-300 transition hover:border-blue-400/40 hover:bg-blue-500/[0.08] disabled:opacity-40"
+                >
+                  {selectedItems.length ===
+                    items.length
+                    ? "Tout désélectionner"
+                    : "Tout sélectionner"}
+                </button>
+
+              </div>
+
+            </AnimatedContainer>
+
+            {/* =================================================
+                ARTICLES
+            ================================================== */}
+
             {items.map((item, index) => {
+
               const isSelected =
                 selectedItems.includes(
                   item.id
@@ -680,20 +1025,38 @@ export default function PanierPage() {
                   key={item.id}
                   delay={
                     0.2 +
-                    index * 0.1
+                    index * 0.07
                   }
                 >
-                  <div
-                    className={`rounded-xl border bg-gray-900 p-5 transition ${
+
+                  <article
+                    className={`group relative overflow-hidden rounded-3xl border bg-[#05070a] transition duration-300 ${
                       isSelected
-                        ? "border-blue-500"
-                        : "border-gray-800"
+                        ? "border-blue-400/40 shadow-[0_0_35px_rgba(37,99,235,0.08)]"
+                        : "border-white/[0.08] hover:border-blue-400/20"
                     }`}
                   >
-                    <div className="flex flex-col gap-5 md:flex-row md:items-center">
+
+                    {/* LIGNE ÉLECTRIQUE */}
+
+                    <div
+                      className={`absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400 to-transparent transition ${
+                        isSelected
+                          ? "opacity-100"
+                          : "opacity-30 group-hover:opacity-80"
+                      }`}
+                    />
+
+                    {/* GLOW */}
+
+                    <div className="pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-blue-500/[0.05] blur-[70px] transition group-hover:bg-blue-500/[0.1]" />
+
+                    <div className="relative flex flex-col gap-5 p-5 md:flex-row md:items-center md:p-6">
 
                       {/* CHECKBOX */}
-                      <div>
+
+                      <div className="flex items-center">
+
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -706,20 +1069,28 @@ export default function PanierPage() {
                             buying ||
                             isRemoving
                           }
-                          className="h-5 w-5 cursor-pointer"
+                          className="h-5 w-5 cursor-pointer appearance-none rounded-md border border-white/20 bg-black transition checked:border-blue-400 checked:bg-blue-500 checked:shadow-[0_0_12px_rgba(37,99,235,0.5)] disabled:cursor-not-allowed disabled:opacity-40"
                         />
+
+                      </div>
+
+                      {/* ICÔNE PRODUIT */}
+
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-blue-400/15 bg-gradient-to-br from-blue-500/10 to-cyan-400/[0.03] text-2xl text-blue-300">
+                        ◈
                       </div>
 
                       {/* PRODUIT */}
-                      <div className="flex-1">
 
-                        <h2 className="text-xl font-semibold">
+                      <div className="min-w-0 flex-1">
+
+                        <h2 className="truncate text-xl font-black">
                           {item.product.name}
                         </h2>
 
                         {item.product
                           .description && (
-                          <p className="mt-1 text-gray-400">
+                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600">
                             {
                               item.product
                                 .description
@@ -727,23 +1098,35 @@ export default function PanierPage() {
                           </p>
                         )}
 
-                        <p className="mt-2 font-semibold text-blue-400">
-                          {Number(
-                            item.product.price
-                          ).toLocaleString(
-                            "fr-FR"
-                          )}{" "}
-                          FCFA
-                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
 
-                        <p className="mt-1 text-sm text-gray-500">
-                          Stock disponible :{" "}
-                          {item.product.stock}
-                        </p>
+                          <span className="text-sm font-black text-blue-300">
+                            {Number(
+                              item.product.price
+                            ).toLocaleString(
+                              "fr-FR"
+                            )}{" "}
+                            <span className="text-cyan-400">
+                              FCFA
+                            </span>
+                          </span>
+
+                          <span className="h-1 w-1 rounded-full bg-zinc-700" />
+
+                          <span className="text-xs text-zinc-600">
+                            Stock :{" "}
+                            <span className="text-emerald-400">
+                              {item.product.stock}
+                            </span>
+                          </span>
+
+                        </div>
+
                       </div>
 
                       {/* QUANTITÉ */}
-                      <div className="flex items-center gap-3">
+
+                      <div className="flex items-center rounded-xl border border-white/[0.07] bg-black/40 p-1">
 
                         <button
                           type="button"
@@ -758,7 +1141,7 @@ export default function PanierPage() {
                             buying ||
                             isRemoving
                           }
-                          className="h-9 w-9 rounded-lg bg-gray-800 transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-lg text-zinc-400 transition hover:bg-blue-500/10 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-30"
                           title={
                             item.quantity === 1
                               ? "Retirer l'article du panier"
@@ -768,7 +1151,7 @@ export default function PanierPage() {
                           −
                         </button>
 
-                        <span className="w-8 text-center font-semibold">
+                        <span className="flex w-10 justify-center text-sm font-black text-white">
                           {isUpdating ||
                           isRemoving
                             ? "..."
@@ -791,28 +1174,34 @@ export default function PanierPage() {
                             buying ||
                             isRemoving
                           }
-                          className="h-9 w-9 rounded-lg bg-gray-800 transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-lg text-zinc-400 transition hover:bg-blue-500/10 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-30"
                         >
                           +
                         </button>
+
                       </div>
 
                       {/* SOUS-TOTAL */}
-                      <div className="w-36 text-right">
 
-                        <p className="text-sm text-gray-500">
+                      <div className="w-full md:w-36 md:text-right">
+
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
                           Sous-total
                         </p>
 
-                        <p className="font-bold">
+                        <p className="mt-1 text-lg font-black text-white">
                           {itemTotal.toLocaleString(
                             "fr-FR"
                           )}{" "}
-                          FCFA
+                          <span className="text-xs font-bold text-cyan-400">
+                            FCFA
+                          </span>
                         </p>
+
                       </div>
 
                       {/* SUPPRIMER */}
+
                       <button
                         type="button"
                         onClick={() =>
@@ -823,85 +1212,115 @@ export default function PanierPage() {
                           buying ||
                           isUpdating
                         }
-                        className="rounded-lg px-3 py-2 text-red-400 transition hover:bg-red-900/20 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-xl border border-red-400/10 bg-red-500/[0.03] px-3 py-2 text-sm text-red-400 transition hover:border-red-400/30 hover:bg-red-500/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {isRemoving
                           ? "Suppression..."
                           : "🗑️"}
                       </button>
+
                     </div>
-                  </div>
+
+                  </article>
+
                 </AnimatedContainer>
               );
             })}
 
-            {/* RÉSUMÉ */}
+            {/* =================================================
+                RÉSUMÉ
+            ================================================== */}
+
             <AnimatedContainer
               delay={
                 0.2 +
-                items.length * 0.1
+                items.length * 0.07
               }
             >
-              <div className="mt-8 rounded-xl border border-gray-800 bg-gray-900 p-6">
 
-                <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <section className="relative mt-8 overflow-hidden rounded-3xl border border-blue-400/15 bg-gradient-to-br from-blue-500/[0.07] via-[#05070a] to-cyan-400/[0.03] p-6 shadow-[0_0_50px_rgba(37,99,235,0.05)] md:p-8">
 
-                  <div>
-                    <p className="text-gray-400">
-                      Articles sélectionnés
-                    </p>
+                <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-500/[0.07] blur-[100px]" />
 
-                    <p className="text-lg font-semibold">
-                      {selectedCartItems.length > 0
-                        ? selectedCartItems.length
-                        : items.length}
-                    </p>
+                <div className="relative">
+
+                  <div className="mb-7 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+
+                    <div>
+
+                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-blue-400">
+                        RÉCAPITULATIF
+                      </p>
+
+                      <p className="mt-2 text-sm text-zinc-500">
+                        {selectedCartItems.length > 0
+                          ? `${selectedCartItems.length} article(s) sélectionné(s)`
+                          : "Tout le panier sera acheté"}
+                      </p>
+
+                    </div>
+
+                    <div className="sm:text-right">
+
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                        Total
+                      </p>
+
+                      <p className="mt-1 text-3xl font-black text-blue-300">
+                        {total.toLocaleString(
+                          "fr-FR"
+                        )}{" "}
+                        <span className="text-sm text-cyan-400">
+                          FCFA
+                        </span>
+                      </p>
+
+                    </div>
+
                   </div>
 
-                  <div className="text-left sm:text-right">
+                  {/* BOUTON ACHAT */}
 
-                    <p className="text-gray-400">
-                      Total
-                    </p>
+                  <button
+                    type="button"
+                    onClick={buySelectedItems}
+                    disabled={
+                      items.length === 0 ||
+                      buying
+                    }
+                    className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 py-4 text-sm font-black text-white shadow-[0_0_30px_rgba(37,99,235,0.2)] transition hover:shadow-[0_0_45px_rgba(37,99,235,0.4)] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:bg-none disabled:text-zinc-500 disabled:shadow-none"
+                  >
 
-                    <p className="text-2xl font-bold text-blue-400">
-                      {total.toLocaleString(
-                        "fr-FR"
-                      )}{" "}
-                      FCFA
-                    </p>
-                  </div>
+                    <span className="relative z-10">
+
+                      {buying
+                        ? "Traitement de l'achat..."
+                        : selectedCartItems.length > 0
+                        ? `Acheter ${
+                            selectedCartItems.length
+                          } article${
+                            selectedCartItems.length >
+                            1
+                              ? "s"
+                              : ""
+                          }`
+                        : "Acheter tout le panier"}
+
+                    </span>
+
+                  </button>
+
                 </div>
 
-                {/* ACHETER */}
-                <button
-                  type="button"
-                  onClick={buySelectedItems}
-                  disabled={
-                    items.length === 0 ||
-                    buying
-                  }
-                  className="w-full rounded-lg bg-blue-600 py-3 font-semibold transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
-                >
-                  {buying
-                    ? "Traitement de l'achat..."
-                    : selectedCartItems.length > 0
-                      ? `Acheter ${
-                          selectedCartItems.length
-                        } article${
-                          selectedCartItems.length >
-                          1
-                            ? "s"
-                            : ""
-                        }`
-                      : "Acheter tout le panier"}
-                </button>
-              </div>
+              </section>
+
             </AnimatedContainer>
 
           </div>
         )}
+
       </div>
+
     </main>
   );
 }

@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import Link from "next/link";
 import echo from "@/lib/echo";
 
 interface User {
@@ -36,6 +37,10 @@ interface Conversation {
   messages?: Message[];
   unread_count?: number;
 }
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8000/api";
 
 export default function MessageriesPage() {
   const [conversations, setConversations] = useState<
@@ -70,15 +75,15 @@ export default function MessageriesPage() {
   const [deletingConversation, setDeletingConversation] =
     useState(false);
 
-  /*
-   * Référence vers la fin de la liste des messages.
-   */
   const messagesEndRef =
     useRef<HTMLDivElement | null>(null);
 
   /*
-   * Récupérer l'utilisateur connecté
+   * =========================
+   * UTILISATEUR CONNECTÉ
+   * =========================
    */
+
   useEffect(() => {
     const user = localStorage.getItem("user");
 
@@ -104,14 +109,14 @@ export default function MessageriesPage() {
     }
   }, []);
 
-  /*
-   * Vérifier si l'utilisateur connecté est admin
-   */
   const isAdmin = currentUserRole === "admin";
 
   /*
-   * Récupérer les conversations
+   * =========================
+   * CONVERSATIONS
+   * =========================
    */
+
   const fetchConversations = async () => {
     const token = localStorage.getItem("token");
 
@@ -122,7 +127,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/conversations",
+        `${API_URL}/conversations`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -152,16 +157,16 @@ export default function MessageriesPage() {
     }
   };
 
-  /*
-   * Charger les conversations au démarrage
-   */
   useEffect(() => {
     fetchConversations();
   }, []);
 
   /*
-   * Récupérer les administrateurs
+   * =========================
+   * ADMINISTRATEURS
+   * =========================
    */
+
   const fetchAdmins = async () => {
     const token = localStorage.getItem("token");
 
@@ -171,7 +176,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/admins",
+        `${API_URL}/admins`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -205,18 +210,17 @@ export default function MessageriesPage() {
     }
   };
 
-  /*
-   * Ouvrir la fenêtre de création
-   */
   const handleNewConversation = async () => {
     setShowAdminList(true);
-
     await fetchAdmins();
   };
 
   /*
-   * Créer une conversation avec un admin
+   * =========================
+   * CRÉER CONVERSATION
+   * =========================
    */
+
   const handleCreateConversation = async (
     admin: User
   ) => {
@@ -230,7 +234,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/conversations",
+        `${API_URL}/conversations`,
         {
           method: "POST",
           headers: {
@@ -262,11 +266,8 @@ export default function MessageriesPage() {
         );
       }
 
-      /*
-       * Récupérer la conversation complète
-       */
       const conversationResponse = await fetch(
-        `http://127.0.0.1:8000/api/conversations/${newConversation.id}`,
+        `${API_URL}/conversations/${newConversation.id}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -338,8 +339,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Marquer toute la conversation comme lue
+   * =========================
+   * MARQUER CONVERSATION LUE
+   * =========================
    */
+
   const handleMarkConversationAsRead = async (
     conversation: Conversation
   ) => {
@@ -351,7 +355,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/conversations/${conversation.id}/read`,
+        `${API_URL}/conversations/${conversation.id}/read`,
         {
           method: "PATCH",
           headers: {
@@ -371,9 +375,6 @@ export default function MessageriesPage() {
         );
       }
 
-      /*
-       * Mettre le compteur de cette conversation à 0
-       */
       setConversations(
         (currentConversations) =>
           currentConversations.map(
@@ -387,9 +388,6 @@ export default function MessageriesPage() {
           )
       );
 
-      /*
-       * Mettre également à jour la conversation sélectionnée
-       */
       setSelectedConversation(
         (currentConversation) => {
           if (
@@ -406,9 +404,6 @@ export default function MessageriesPage() {
         }
       );
 
-      /*
-       * Mettre les messages reçus comme lus
-       */
       setMessages((currentMessages) =>
         currentMessages.map((message) =>
           message.sender_id !== currentUserId &&
@@ -429,8 +424,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Sélectionner une conversation
+   * =========================
+   * SÉLECTION
+   * =========================
    */
+
   const handleSelectConversation = async (
     conversation: Conversation
   ) => {
@@ -441,9 +439,6 @@ export default function MessageriesPage() {
     );
   };
 
-  /*
-   * Fermer la discussion ouverte.
-   */
   const handleCloseConversation = () => {
     setSelectedConversation(null);
     setMessages([]);
@@ -451,9 +446,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Supprimer la conversation uniquement pour
-   * l'utilisateur connecté.
+   * =========================
+   * SUPPRESSION CONVERSATION
+   * =========================
    */
+
   const handleDeleteConversation = async () => {
     if (!selectedConversation) {
       return;
@@ -480,7 +477,7 @@ export default function MessageriesPage() {
         selectedConversation.id;
 
       const response = await fetch(
-        `http://127.0.0.1:8000/api/conversations/${conversationId}`,
+        `${API_URL}/conversations/${conversationId}`,
         {
           method: "DELETE",
           headers: {
@@ -500,9 +497,6 @@ export default function MessageriesPage() {
         );
       }
 
-      /*
-       * Retirer la conversation de la liste
-       */
       setConversations(
         (currentConversations) =>
           currentConversations.filter(
@@ -525,8 +519,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Récupérer les messages
+   * =========================
+   * MESSAGES
+   * =========================
    */
+
   useEffect(() => {
     if (!selectedConversation) {
       setMessages([]);
@@ -542,7 +539,7 @@ export default function MessageriesPage() {
 
       try {
         const response = await fetch(
-          `http://127.0.0.1:8000/api/conversations/${selectedConversation.id}/messages`,
+          `${API_URL}/conversations/${selectedConversation.id}/messages`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -574,25 +571,26 @@ export default function MessageriesPage() {
   }, [selectedConversation]);
 
   /*
-   * Aller directement au dernier message.
-   *
-   * Aucun défilement visible :
-   * la conversation arrive directement en bas.
+   * Aller directement au dernier message
    */
+
   useEffect(() => {
     if (!selectedConversation || messages.length === 0) {
       return;
     }
 
     messagesEndRef.current?.scrollIntoView({
-      behavior: "instant",
+      behavior: "auto",
       block: "end",
     });
   }, [messages, selectedConversation]);
 
   /*
-   * Echo + présence + temps réel
+   * =========================
+   * ECHO / TEMPS RÉEL
+   * =========================
    */
+
   useEffect(() => {
     if (!echo) {
       return;
@@ -631,12 +629,8 @@ export default function MessageriesPage() {
       );
     });
 
-    let privateChannel:
-      | ReturnType<typeof echoInstance.private>
-      | null = null;
-
     if (selectedConversation) {
-      privateChannel = echoInstance
+      echoInstance
         .private(
           `conversation.${selectedConversation.id}`
         )
@@ -659,10 +653,6 @@ export default function MessageriesPage() {
               ];
             });
 
-            /*
-             * Si le message vient de l'autre utilisateur,
-             * la conversation est ouverte : on le marque comme lu.
-             */
             if (
               data.sender_id !== currentUserId
             ) {
@@ -719,8 +709,11 @@ export default function MessageriesPage() {
   }, [selectedConversation, currentUserId]);
 
   /*
-   * Envoyer un message
+   * =========================
+   * ENVOYER MESSAGE
+   * =========================
    */
+
   const handleSendMessage = async () => {
     if (!selectedConversation) {
       return;
@@ -741,7 +734,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/conversations/${selectedConversation.id}/messages`,
+        `${API_URL}/conversations/${selectedConversation.id}/messages`,
         {
           method: "POST",
           headers: {
@@ -794,9 +787,6 @@ export default function MessageriesPage() {
     }
   };
 
-  /*
-   * Entrée
-   */
   const handleKeyDown = (
     event: KeyboardEvent<HTMLInputElement>
   ) => {
@@ -807,8 +797,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Marquer un message comme lu
+   * =========================
+   * MESSAGE LU
+   * =========================
    */
+
   const handleMarkAsRead = async (
     message: Message
   ) => {
@@ -832,7 +825,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/messages/${message.id}/read`,
+        `${API_URL}/messages/${message.id}/read`,
         {
           method: "PATCH",
           headers: {
@@ -869,8 +862,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Supprimer un message
+   * =========================
+   * SUPPRIMER MESSAGE
+   * =========================
    */
+
   const handleDeleteMessage = async (
     message: Message
   ) => {
@@ -882,7 +878,7 @@ export default function MessageriesPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/messages/${message.id}`,
+        `${API_URL}/messages/${message.id}`,
         {
           method: "DELETE",
           headers: {
@@ -917,8 +913,11 @@ export default function MessageriesPage() {
   };
 
   /*
-   * Utilisateur en ligne
+   * =========================
+   * HELPERS
+   * =========================
    */
+
   const isUserOnline = (
     userId: number | undefined
   ) => {
@@ -931,9 +930,6 @@ export default function MessageriesPage() {
     );
   };
 
-  /*
-   * Autre participant
-   */
   const getConversationUser = (
     conversation: Conversation
   ): User | undefined => {
@@ -944,24 +940,12 @@ export default function MessageriesPage() {
     return conversation.user;
   };
 
-  /*
-   * Messages non lus d'une conversation
-   */
   const getUnreadCount = (
     conversation: Conversation
   ) => {
-    if (
-      conversation.unread_count !== undefined
-    ) {
-      return conversation.unread_count;
-    }
-
-    return 0;
+    return conversation.unread_count ?? 0;
   };
 
-  /*
-   * Recherche des conversations par nom.
-   */
   const filteredConversations =
     conversations.filter((conversation) => {
       if (!isAdmin) {
@@ -983,419 +967,781 @@ export default function MessageriesPage() {
       return userName.includes(search);
     });
 
+  const totalUnread = conversations.reduce(
+    (total, conversation) =>
+      total + getUnreadCount(conversation),
+    0
+  );
+
+  const selectedUser = selectedConversation
+    ? getConversationUser(selectedConversation)
+    : undefined;
+
+  const selectedUserOnline = selectedUser
+    ? isUserOnline(selectedUser.id)
+    : false;
+
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex h-screen max-w-7xl overflow-hidden">
+    <div className="min-h-screen bg-[#050505] text-white">
+      <div className="flex h-screen flex-col overflow-hidden">
 
-        {/* =========================
-            LISTE CONVERSATIONS
-        ========================== */}
+        {/* =====================================================
+            NAVIGATION SHOPX
+        ====================================================== */}
 
-        <aside className="w-80 border-r border-gray-800 bg-gray-950">
+        <header className="z-30 flex h-16 shrink-0 items-center border-b border-white/10 bg-black/90 px-4 backdrop-blur-xl md:px-8">
 
-          <div className="border-b border-gray-800 p-5">
+          <div className="flex w-full items-center justify-between">
 
-            <div>
-              <h1 className="text-2xl font-bold text-blue-500">
-                Messageries
-              </h1>
-            </div>
+            {/* LOGO */}
 
-            <p className="mt-1 text-sm text-gray-400">
-              Vos conversations
-            </p>
-
-            {isAdmin && (
-              <div className="mt-4">
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(event) =>
-                    setSearchTerm(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Rechercher par nom..."
-                  className="w-full rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-blue-500"
-                />
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleNewConversation}
-              className="mt-4 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold transition hover:bg-blue-700"
+            <Link
+              href="/"
+              className="group flex items-center gap-3"
             >
-              + Nouvelle conversation
-            </button>
-          </div>
+              <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 shadow-[0_0_25px_rgba(34,211,238,0.15)]">
+                <span className="text-lg font-black italic text-cyan-300">
+                  X
+                </span>
 
-          {showAdminList && (
-            <div className="border-b border-gray-800 bg-gray-900 p-4">
-
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="font-semibold">
-                  Choisir un administrateur
-                </h2>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowAdminList(false)
-                  }
-                  className="text-gray-400 hover:text-white"
-                >
-                  ✕
-                </button>
+                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 transition group-hover:translate-x-full group-hover:opacity-100" />
               </div>
 
-              {admins.length === 0 ? (
-                <p className="text-sm text-gray-400">
-                  Aucun administrateur disponible.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {admins.map((admin) => (
-                    <button
-                      key={admin.id}
-                      type="button"
-                      disabled={
-                        creatingConversation
-                      }
-                      onClick={() =>
-                        handleCreateConversation(
-                          admin
-                        )
-                      }
-                      className="flex w-full items-center gap-3 rounded-xl bg-gray-800 p-3 text-left transition hover:bg-blue-600 disabled:opacity-50"
-                    >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 font-bold">
-                        {admin.name
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
+              <div>
+                <span className="block text-lg font-black tracking-wider">
+                  SHOP
+                  <span className="text-cyan-300">X</span>
+                </span>
 
-                      <div>
-                        <p className="font-semibold">
-                          {admin.name}
-                        </p>
+                <span className="hidden text-[9px] uppercase tracking-[0.3em] text-zinc-500 sm:block">
+                  Digital Store
+                </span>
+              </div>
+            </Link>
 
-                        <p className="text-xs text-gray-400">
-                          Administrateur
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+            {/* NAVIGATION */}
+
+            <nav className="hidden items-center gap-1 lg:flex">
+
+              <Link
+                href="/"
+                className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white"
+              >
+                Accueil
+              </Link>
+
+              <Link
+                href="/Produits"
+                className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white"
+              >
+                Catalogue
+              </Link>
+
+              <Link
+                href="/Boutique"
+                className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white"
+              >
+                Boutiques
+              </Link>
+
+              <Link
+                href="/Commandes"
+                className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white"
+              >
+                Commandes
+              </Link>
+
+              <Link
+                href="/Messageries"
+                className="relative rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_20px_rgba(139,92,246,0.12)]"
+              >
+                <span className="mr-2">✦</span>
+                Messages
+
+                {totalUnread > 0 && (
+                  <span className="ml-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-fuchsia-500 px-1 text-[10px] font-bold shadow-[0_0_12px_rgba(217,70,239,0.5)]">
+                    {totalUnread}
+                  </span>
+                )}
+              </Link>
+
+            </nav>
+
+            {/* ACTIONS */}
+
+            <div className="flex items-center gap-2">
+
+              <Link
+                href="/Notifications"
+                className="hidden h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-300 sm:flex"
+                title="Notifications"
+              >
+                ♢
+              </Link>
+
+              <Link
+                href="/Compte"
+                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold transition hover:border-violet-400/30 hover:bg-violet-400/10"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-[10px] font-black text-black">
+                  {currentUserId ? "U" : "?"}
+                </span>
+
+                <span className="hidden md:block">
+                  Mon compte
+                </span>
+              </Link>
+
             </div>
-          )}
-
-          <div className="overflow-y-auto">
-            {loading ? (
-              <div className="p-5 text-center text-gray-400">
-                Chargement...
-              </div>
-            ) : filteredConversations.length === 0 ? (
-              <div className="p-5 text-center text-gray-400">
-                {isAdmin &&
-                searchTerm.trim()
-                  ? "Aucun utilisateur trouvé."
-                  : "Aucune conversation."}
-              </div>
-            ) : (
-              filteredConversations.map(
-                (conversation) => {
-                  const otherUser =
-                    getConversationUser(
-                      conversation
-                    );
-
-                  const unreadCount =
-                    getUnreadCount(
-                      conversation
-                    );
-
-                  const online =
-                    isUserOnline(
-                      otherUser?.id
-                    );
-
-                  return (
-                    <button
-                      key={conversation.id}
-                      type="button"
-                      onClick={() =>
-                        handleSelectConversation(
-                          conversation
-                        )
-                      }
-                      className={`flex w-full items-center gap-3 border-b border-gray-800 p-4 text-left transition ${
-                        selectedConversation?.id ===
-                        conversation.id
-                          ? "bg-blue-600"
-                          : "hover:bg-gray-900"
-                      }`}
-                    >
-                      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 font-bold">
-                        {otherUser?.name
-                          ?.charAt(0)
-                          .toUpperCase() ?? "?"}
-
-                        {online && (
-                          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-gray-950 bg-green-500" />
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate font-semibold">
-                            {otherUser?.name ??
-                              "Utilisateur"}
-                          </p>
-
-                          {unreadCount > 0 && (
-                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold">
-                              {unreadCount}
-                            </span>
-                          )}
-                        </div>
-
-                        <p
-                          className={`text-xs ${
-                            online
-                              ? "text-green-400"
-                              : "text-gray-500"
-                          }`}
-                        >
-                          {online
-                            ? "En ligne"
-                            : "Hors ligne"}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                }
-              )
-            )}
           </div>
-        </aside>
+        </header>
 
-        {/* =========================
-            ZONE CHAT
-        ========================== */}
+        {/* =====================================================
+            ESPACE MESSAGERIE
+        ====================================================== */}
 
-        <main className="flex flex-1 flex-col bg-gray-900">
+        <div className="flex min-h-0 flex-1">
 
-          {!selectedConversation ? (
-            <div className="flex flex-1 items-center justify-center">
-              <div className="text-center">
+          {/* ===================================================
+              SIDEBAR
+          ==================================================== */}
 
-                <div className="mb-4 text-6xl">
-                  💬
-                </div>
+          <aside className="flex w-full shrink-0 flex-col border-r border-white/10 bg-[#080808] md:w-[340px]">
 
-                <h2 className="text-2xl font-bold">
-                  Messagerie
-                </h2>
+            {/* SIDEBAR HEADER */}
 
-                <p className="mt-2 text-gray-400">
-                  Cliquez sur une conversation
-                  pour commencer.
-                </p>
+            <div className="border-b border-white/10 p-5">
 
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* =========================
-                  EN-TÊTE
-              ========================== */}
+              <div className="mb-5 flex items-start justify-between">
 
-              <header className="flex items-center gap-3 border-b border-gray-800 bg-gray-950 p-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]" />
 
-                <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-blue-500 font-bold">
-                  {getConversationUser(
-                    selectedConversation
-                  )?.name
-                    ?.charAt(0)
-                    .toUpperCase() ?? "?"}
+                    <h1 className="text-xl font-black tracking-tight">
+                      Messageries
+                    </h1>
+                  </div>
 
-                  {isUserOnline(
-                    getConversationUser(
-                      selectedConversation
-                    )?.id
-                  ) && (
-                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-gray-950 bg-green-500" />
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate font-bold">
-                    {getConversationUser(
-                      selectedConversation
-                    )?.name ??
-                      "Utilisateur"}
-                  </h2>
-
-                  <p className="text-sm text-gray-400">
-                    {isUserOnline(
-                      getConversationUser(
-                        selectedConversation
-                      )?.id
-                    )
-                      ? "En ligne"
-                      : "Hors ligne"}
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Centre de communication ShopX
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={
-                    handleCloseConversation
-                  }
-                  className="rounded-xl bg-gray-700 px-4 py-2 text-sm font-semibold transition hover:bg-gray-600"
-                >
-                  Fermer
-                </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    handleDeleteConversation
-                  }
-                  disabled={deletingConversation}
-                  className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {deletingConversation
-                    ? "Suppression..."
-                    : "Supprimer"}
-                </button>
-              </header>
-
-              {/* =========================
-                  MESSAGES
-              ========================== */}
-
-              <div className="flex-1 space-y-3 overflow-y-auto p-5">
-
-                {messages.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-gray-500">
-                    Aucun message.
-                  </div>
-                ) : (
-                  <>
-                    {messages.map((message) => {
-                      const isMine =
-                        message.sender_id ===
-                        currentUserId;
-
-                      return (
-                        <div
-                          key={message.id}
-                          className={`flex ${
-                            isMine
-                              ? "justify-end"
-                              : "justify-start"
-                          }`}
-                          onMouseEnter={() =>
-                            handleMarkAsRead(
-                              message
-                            )
-                          }
-                        >
-                          <div
-                            className={`max-w-[75%] rounded-2xl px-4 py-3 ${
-                              isMine
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-800 text-gray-100"
-                            }`}
-                          >
-                            <p className="break-words">
-                              {message.message}
-                            </p>
-
-                            <div className="mt-1 flex items-center justify-end gap-2 text-xs opacity-70">
-                              <span>
-                                {new Date(
-                                  message.created_at
-                                ).toLocaleTimeString(
-                                  "fr-FR",
-                                  {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  }
-                                )}
-                              </span>
-
-                              {isMine && (
-                                <span>
-                                  {message.read_at
-                                    ? "✓✓"
-                                    : "✓"}
-                                </span>
-                              )}
-                            </div>
-
-                            {(isMine ||
-                              selectedConversation.admin_id ===
-                                currentUserId) && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDeleteMessage(
-                                    message
-                                  )
-                                }
-                                className="mt-2 text-xs text-red-300 hover:text-red-100"
-                              >
-                                Supprimer
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    <div ref={messagesEndRef} />
-                  </>
-                )}
+                <div className="rounded-lg border border-violet-400/20 bg-violet-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-300">
+                  Live
+                </div>
               </div>
 
-              {/* =========================
-                  ENVOI
-              ========================== */}
+              {/* STAT */}
 
-              <div className="border-t border-gray-800 bg-gray-950 p-4">
-                <div className="flex gap-3">
+              <div className="mb-4 grid grid-cols-2 gap-2">
+
+                <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-600">
+                    Discussions
+                  </p>
+
+                  <p className="mt-1 text-lg font-black">
+                    {conversations.length}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-fuchsia-400/10 bg-fuchsia-400/[0.04] p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-600">
+                    Non lus
+                  </p>
+
+                  <p className="mt-1 text-lg font-black text-fuchsia-300">
+                    {totalUnread}
+                  </p>
+                </div>
+
+              </div>
+
+              {/* RECHERCHE ADMIN */}
+
+              {isAdmin && (
+                <div className="relative mb-3">
+
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600">
+                    ⌕
+                  </span>
 
                   <input
                     type="text"
-                    value={newMessage}
+                    value={searchTerm}
                     onChange={(event) =>
-                      setNewMessage(
+                      setSearchTerm(
                         event.target.value
                       )
                     }
-                    onKeyDown={handleKeyDown}
-                    placeholder="Écrivez votre message..."
-                    className="flex-1 rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+                    placeholder="Rechercher un utilisateur..."
+                    className="w-full rounded-xl border border-white/10 bg-black/60 py-3 pl-9 pr-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-400/40 focus:bg-cyan-400/[0.03] focus:shadow-[0_0_20px_rgba(34,211,238,0.08)]"
                   />
+
+                </div>
+              )}
+
+              {/* NOUVELLE CONVERSATION */}
+
+              <button
+                type="button"
+                onClick={handleNewConversation}
+                className="group relative w-full overflow-hidden rounded-xl border border-cyan-400/20 bg-gradient-to-r from-cyan-400/10 via-violet-500/10 to-fuchsia-500/10 px-4 py-3 text-sm font-bold text-white transition hover:border-cyan-300/40 hover:shadow-[0_0_25px_rgba(34,211,238,0.12)]"
+              >
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  <span className="text-lg text-cyan-300">
+                    ＋
+                  </span>
+                  Nouvelle conversation
+                </span>
+
+                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition duration-700 group-hover:translate-x-full" />
+              </button>
+            </div>
+
+            {/* CHOIX ADMIN */}
+
+            {showAdminList && (
+              <div className="border-b border-white/10 bg-gradient-to-b from-violet-500/[0.06] to-transparent p-4">
+
+                <div className="mb-3 flex items-center justify-between">
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-violet-300">
+                      Nouvelle discussion
+                    </p>
+
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Sélectionnez un administrateur
+                    </p>
+                  </div>
 
                   <button
                     type="button"
-                    onClick={handleSendMessage}
-                    disabled={!newMessage.trim()}
-                    className="rounded-xl bg-blue-600 px-6 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() =>
+                      setShowAdminList(false)
+                    }
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-zinc-500 transition hover:border-white/20 hover:text-white"
                   >
-                    Envoyer
+                    ✕
+                  </button>
+                </div>
+
+                {admins.length === 0 ? (
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 text-center">
+                    <p className="text-sm text-zinc-500">
+                      Aucun administrateur disponible.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {admins.map((admin) => (
+                      <button
+                        key={admin.id}
+                        type="button"
+                        disabled={
+                          creatingConversation
+                        }
+                        onClick={() =>
+                          handleCreateConversation(
+                            admin
+                          )
+                        }
+                        className="group flex w-full items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.06] disabled:opacity-50"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/20 to-violet-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20">
+                          {admin.name
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-white">
+                            {admin.name}
+                          </p>
+
+                          <p className="text-[11px] text-zinc-500">
+                            Administrateur ShopX
+                          </p>
+                        </div>
+
+                        <span className="ml-auto text-zinc-600 transition group-hover:text-cyan-300">
+                          →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* LISTE */}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+
+              {loading ? (
+                <div className="flex h-40 items-center justify-center">
+                  <div className="text-center">
+                    <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-cyan-400" />
+
+                    <p className="text-xs text-zinc-600">
+                      Chargement des discussions...
+                    </p>
+                  </div>
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="px-6 py-16 text-center">
+
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-2xl text-zinc-600">
+                    ◇
+                  </div>
+
+                  <p className="text-sm font-semibold text-zinc-400">
+                    {isAdmin &&
+                    searchTerm.trim()
+                      ? "Aucun utilisateur trouvé."
+                      : "Aucune conversation."}
+                  </p>
+
+                  <p className="mt-1 text-xs text-zinc-600">
+                    Commencez une nouvelle discussion.
+                  </p>
+
+                </div>
+              ) : (
+                filteredConversations.map(
+                  (conversation) => {
+                    const otherUser =
+                      getConversationUser(
+                        conversation
+                      );
+
+                    const unreadCount =
+                      getUnreadCount(
+                        conversation
+                      );
+
+                    const online =
+                      isUserOnline(
+                        otherUser?.id
+                      );
+
+                    const active =
+                      selectedConversation?.id ===
+                      conversation.id;
+
+                    return (
+                      <button
+                        key={conversation.id}
+                        type="button"
+                        onClick={() =>
+                          handleSelectConversation(
+                            conversation
+                          )
+                        }
+                        className={`group relative flex w-full items-center gap-3 border-b border-white/[0.05] px-4 py-4 text-left transition ${
+                          active
+                            ? "bg-gradient-to-r from-cyan-400/[0.08] via-violet-500/[0.07] to-transparent"
+                            : "hover:bg-white/[0.025]"
+                        }`}
+                      >
+
+                        {/* BARRE ACTIVE */}
+
+                        {active && (
+                          <span className="absolute bottom-2 left-0 top-2 w-[2px] rounded-r-full bg-gradient-to-b from-cyan-300 via-violet-400 to-fuchsia-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]" />
+                        )}
+
+                        {/* AVATAR */}
+
+                        <div
+                          className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-black ${
+                            active
+                              ? "bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 text-cyan-300 ring-1 ring-cyan-400/30"
+                              : "bg-white/[0.05] text-zinc-400 ring-1 ring-white/10"
+                          }`}
+                        >
+                          {otherUser?.name
+                            ?.charAt(0)
+                            .toUpperCase() ?? "?"}
+
+                          {online && (
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#080808] bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                          )}
+                        </div>
+
+                        {/* INFOS */}
+
+                        <div className="min-w-0 flex-1">
+
+                          <div className="flex items-center justify-between gap-2">
+
+                            <p className="truncate text-sm font-bold text-zinc-200">
+                              {otherUser?.name ??
+                                "Utilisateur"}
+                            </p>
+
+                            {unreadCount > 0 && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-fuchsia-500 px-1.5 text-[10px] font-black text-white shadow-[0_0_12px_rgba(217,70,239,0.45)]">
+                                {unreadCount}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-1 flex items-center gap-2">
+
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                online
+                                  ? "bg-emerald-400 shadow-[0_0_7px_rgba(52,211,153,0.8)]"
+                                  : "bg-zinc-700"
+                              }`}
+                            />
+
+                            <p
+                              className={`text-[11px] ${
+                                online
+                                  ? "text-emerald-400"
+                                  : "text-zinc-600"
+                              }`}
+                            >
+                              {online
+                                ? "En ligne"
+                                : "Hors ligne"}
+                            </p>
+                          </div>
+
+                        </div>
+
+                      </button>
+                    );
+                  }
+                )
+              )}
+            </div>
+          </aside>
+
+          {/* ===================================================
+              CHAT
+          ==================================================== */}
+
+          <main className="relative hidden min-w-0 flex-1 flex-col overflow-hidden bg-[#050505] md:flex">
+
+            {/* GRADIENT BACKGROUND */}
+
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+
+              <div className="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-violet-600/[0.07] blur-[120px]" />
+
+              <div className="absolute -bottom-40 left-1/3 h-96 w-96 rounded-full bg-cyan-400/[0.05] blur-[120px]" />
+
+              <div className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-500/[0.025] blur-[100px]" />
+
+            </div>
+
+            {!selectedConversation ? (
+              <div className="relative flex flex-1 items-center justify-center">
+
+                <div className="max-w-md px-6 text-center">
+
+                  <div className="relative mx-auto mb-7 flex h-24 w-24 items-center justify-center rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-400/10 via-violet-500/10 to-fuchsia-500/10 shadow-[0_0_60px_rgba(139,92,246,0.1)]">
+
+                    <span className="text-4xl">
+                      ◇
+                    </span>
+
+                    <span className="absolute inset-0 rounded-[28px] border border-white/5" />
+                  </div>
+
+                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.3em] text-cyan-400/70">
+                    SHOPX MESSAGING
+                  </p>
+
+                  <h2 className="text-3xl font-black tracking-tight">
+                    Votre espace
+                    <span className="bg-gradient-to-r from-cyan-300 via-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+                      {" "}
+                      messages
+                    </span>
+                  </h2>
+
+                  <p className="mt-3 text-sm leading-6 text-zinc-500">
+                    Sélectionnez une conversation
+                    pour échanger avec votre
+                    interlocuteur en temps réel.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleNewConversation}
+                    className="mt-7 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-3 text-sm font-bold text-cyan-300 transition hover:border-cyan-300/40 hover:bg-cyan-400/15 hover:shadow-[0_0_25px_rgba(34,211,238,0.12)]"
+                  >
+                    ＋ Démarrer une conversation
                   </button>
 
                 </div>
               </div>
-            </>
-          )}
-        </main>
+            ) : (
+              <>
+
+                {/* ============================================
+                    HEADER CHAT
+                ============================================= */}
+
+                <header className="relative flex shrink-0 items-center gap-3 border-b border-white/10 bg-black/70 px-5 py-4 backdrop-blur-xl">
+
+                  <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20">
+
+                    {selectedUser?.name
+                      ?.charAt(0)
+                      .toUpperCase() ?? "?"}
+
+                    {selectedUserOnline && (
+                      <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+
+                    <div className="flex items-center gap-2">
+
+                      <h2 className="truncate text-sm font-black text-white">
+                        {selectedUser?.name ??
+                          "Utilisateur"}
+                      </h2>
+
+                      {selectedUserOnline && (
+                        <span className="hidden rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 sm:inline-block">
+                          En ligne
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-0.5 text-[11px] text-zinc-600">
+                      {selectedUserOnline
+                        ? "Disponible maintenant"
+                        : "Hors ligne"}
+                    </p>
+
+                  </div>
+
+                  <div className="flex items-center gap-2">
+
+                    <button
+                      type="button"
+                      onClick={
+                        handleCloseConversation
+                      }
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-zinc-500 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+                      title="Fermer"
+                    >
+                      ×
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        handleDeleteConversation
+                      }
+                      disabled={
+                        deletingConversation
+                      }
+                      className="hidden h-9 items-center gap-2 rounded-xl border border-red-500/10 bg-red-500/[0.05] px-3 text-xs font-bold text-red-400 transition hover:border-red-500/30 hover:bg-red-500/10 sm:flex"
+                    >
+                      {deletingConversation
+                        ? "Suppression..."
+                        : "Supprimer"}
+                    </button>
+
+                  </div>
+                </header>
+
+                {/* ============================================
+                    MESSAGES
+                ============================================= */}
+
+                <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-6">
+
+                  <div className="mx-auto flex max-w-4xl flex-col gap-3">
+
+                    {messages.length === 0 ? (
+                      <div className="flex h-full min-h-[400px] items-center justify-center">
+
+                        <div className="text-center">
+
+                          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-xl text-zinc-600">
+                            ✦
+                          </div>
+
+                          <p className="text-sm font-semibold text-zinc-500">
+                            Aucun message pour le moment.
+                          </p>
+
+                          <p className="mt-1 text-xs text-zinc-700">
+                            Envoyez le premier message.
+                          </p>
+
+                        </div>
+
+                      </div>
+                    ) : (
+                      messages.map((message) => {
+                        const isMine =
+                          message.sender_id ===
+                          currentUserId;
+
+                        return (
+                          <div
+                            key={message.id}
+                            className={`group flex ${
+                              isMine
+                                ? "justify-end"
+                                : "justify-start"
+                            }`}
+                            onMouseEnter={() =>
+                              handleMarkAsRead(
+                                message
+                              )
+                            }
+                          >
+
+                            <div
+                              className={`relative max-w-[78%] rounded-2xl px-4 py-3 shadow-lg ${
+                                isMine
+                                  ? "rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_8px_30px_rgba(139,92,246,0.12)]"
+                                  : "rounded-bl-md border border-white/[0.07] bg-white/[0.045] text-zinc-100"
+                              }`}
+                            >
+
+                              <p className="break-words text-sm leading-6">
+                                {message.message}
+                              </p>
+
+                              <div
+                                className={`mt-1.5 flex items-center justify-end gap-2 text-[10px] ${
+                                  isMine
+                                    ? "text-white/60"
+                                    : "text-zinc-600"
+                                }`}
+                              >
+
+                                <span>
+                                  {new Date(
+                                    message.created_at
+                                  ).toLocaleTimeString(
+                                    "fr-FR",
+                                    {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    }
+                                  )}
+                                </span>
+
+                                {isMine && (
+                                  <span
+                                    className={
+                                      message.read_at
+                                        ? "font-bold text-cyan-200"
+                                        : ""
+                                    }
+                                  >
+                                    {message.read_at
+                                      ? "✓✓"
+                                      : "✓"}
+                                  </span>
+                                )}
+
+                              </div>
+
+                              {(isMine ||
+                                selectedConversation.admin_id ===
+                                  currentUserId) && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDeleteMessage(
+                                      message
+                                    )
+                                  }
+                                  className={`mt-2 text-[10px] opacity-0 transition group-hover:opacity-100 ${
+                                    isMine
+                                      ? "text-white/60 hover:text-white"
+                                      : "text-red-400 hover:text-red-300"
+                                  }`}
+                                >
+                                  Supprimer
+                                </button>
+                              )}
+
+                            </div>
+
+                          </div>
+                        );
+                      })
+                    )}
+
+                    <div ref={messagesEndRef} />
+
+                  </div>
+                </div>
+
+                {/* ============================================
+                    COMPOSER
+                ============================================= */}
+
+                <div className="relative shrink-0 border-t border-white/10 bg-black/70 p-4 backdrop-blur-xl">
+
+                  <div className="mx-auto flex max-w-4xl items-center gap-3">
+
+                    <div className="relative flex-1">
+
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(event) =>
+                          setNewMessage(
+                            event.target.value
+                          )
+                        }
+                        onKeyDown={handleKeyDown}
+                        placeholder="Écrivez votre message..."
+                        className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 pr-12 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-400/30 focus:bg-cyan-400/[0.025] focus:shadow-[0_0_25px_rgba(34,211,238,0.06)]"
+                      />
+
+                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs text-zinc-700">
+                        ↵
+                      </span>
+
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSendMessage}
+                      disabled={!newMessage.trim()}
+                      className="group flex h-12 items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-5 text-sm font-black text-black shadow-[0_0_25px_rgba(139,92,246,0.18)] transition hover:scale-[1.02] hover:shadow-[0_0_35px_rgba(139,92,246,0.3)] disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:scale-100"
+                    >
+                      <span className="hidden sm:block">
+                        Envoyer
+                      </span>
+
+                      <span className="text-lg">
+                        →
+                      </span>
+                    </button>
+
+                  </div>
+
+                  <p className="mx-auto mt-2 hidden max-w-4xl text-[9px] uppercase tracking-wider text-zinc-700 sm:block">
+                    Entrée pour envoyer • Communication sécurisée ShopX
+                  </p>
+
+                </div>
+              </>
+            )}
+          </main>
+        </div>
       </div>
     </div>
   );
