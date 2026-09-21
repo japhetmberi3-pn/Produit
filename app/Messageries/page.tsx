@@ -9,12 +9,15 @@ import {
 
 import Link from "next/link";
 import echo from "@/lib/echo";
+import { useAuth } from "@/app/context/AuthContext";
 
 interface User {
   id: number;
   name: string;
   email?: string;
   role?: string;
+  profile_photo?: string | null;
+  profile_photo_url?: string | null;
   is_online?: boolean;
 }
 
@@ -43,6 +46,25 @@ const API_URL =
   "http://127.0.0.1:8000/api";
 
 export default function MessageriesPage() {
+  /*
+   * ============================================================
+   * UTILISATEUR GLOBAL
+   * ============================================================
+   */
+
+  const { user } = useAuth();
+
+  const currentUserId = user?.id ?? null;
+  const currentUserRole = user?.role ?? null;
+
+  const isAdmin = currentUserRole === "admin";
+
+  /*
+   * ============================================================
+   * ÉTATS
+   * ============================================================
+   */
+
   const [conversations, setConversations] = useState<
     Conversation[]
   >([]);
@@ -51,21 +73,18 @@ export default function MessageriesPage() {
     useState<Conversation | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
+
   const [newMessage, setNewMessage] = useState("");
 
   const [loading, setLoading] = useState(true);
+
   const [creatingConversation, setCreatingConversation] =
     useState(false);
-
-  const [currentUserId, setCurrentUserId] =
-    useState<number | null>(null);
-
-  const [currentUserRole, setCurrentUserRole] =
-    useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
 
   const [admins, setAdmins] = useState<User[]>([]);
+
   const [showAdminList, setShowAdminList] =
     useState(false);
 
@@ -75,46 +94,21 @@ export default function MessageriesPage() {
   const [deletingConversation, setDeletingConversation] =
     useState(false);
 
+  /*
+   * NOUVEAU
+   * Affichage de la fiche profil de l'interlocuteur
+   */
+
+  const [showProfile, setShowProfile] =
+    useState(false);
+
   const messagesEndRef =
     useRef<HTMLDivElement | null>(null);
 
   /*
-   * =========================
-   * UTILISATEUR CONNECTÉ
-   * =========================
-   */
-
-  useEffect(() => {
-    const user = localStorage.getItem("user");
-
-    if (!user) {
-      return;
-    }
-
-    try {
-      const parsedUser = JSON.parse(user);
-
-      if (parsedUser?.id) {
-        setCurrentUserId(parsedUser.id);
-      }
-
-      if (parsedUser?.role) {
-        setCurrentUserRole(parsedUser.role);
-      }
-    } catch (error) {
-      console.error(
-        "Impossible de récupérer l'utilisateur connecté :",
-        error
-      );
-    }
-  }, []);
-
-  const isAdmin = currentUserRole === "admin";
-
-  /*
-   * =========================
+   * ============================================================
    * CONVERSATIONS
-   * =========================
+   * ============================================================
    */
 
   const fetchConversations = async () => {
@@ -158,13 +152,17 @@ export default function MessageriesPage() {
   };
 
   useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
     fetchConversations();
-  }, []);
+  }, [currentUserId]);
 
   /*
-   * =========================
+   * ============================================================
    * ADMINISTRATEURS
-   * =========================
+   * ============================================================
    */
 
   const fetchAdmins = async () => {
@@ -216,9 +214,9 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * CRÉER CONVERSATION
-   * =========================
+   * ============================================================
    */
 
   const handleCreateConversation = async (
@@ -339,9 +337,9 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * MARQUER CONVERSATION LUE
-   * =========================
+   * ============================================================
    */
 
   const handleMarkConversationAsRead = async (
@@ -424,15 +422,21 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * SÉLECTION
-   * =========================
+   * ============================================================
    */
 
   const handleSelectConversation = async (
     conversation: Conversation
   ) => {
     setSelectedConversation(conversation);
+
+    /*
+     * Ferme automatiquement la fiche profil
+     * lorsqu'on change de conversation.
+     */
+    setShowProfile(false);
 
     await handleMarkConversationAsRead(
       conversation
@@ -443,12 +447,17 @@ export default function MessageriesPage() {
     setSelectedConversation(null);
     setMessages([]);
     setNewMessage("");
+
+    /*
+     * Fermer également le profil.
+     */
+    setShowProfile(false);
   };
 
   /*
-   * =========================
+   * ============================================================
    * SUPPRESSION CONVERSATION
-   * =========================
+   * ============================================================
    */
 
   const handleDeleteConversation = async () => {
@@ -508,6 +517,7 @@ export default function MessageriesPage() {
       setSelectedConversation(null);
       setMessages([]);
       setNewMessage("");
+      setShowProfile(false);
     } catch (error) {
       console.error(
         "Erreur suppression conversation :",
@@ -519,9 +529,9 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * MESSAGES
-   * =========================
+   * ============================================================
    */
 
   useEffect(() => {
@@ -571,7 +581,9 @@ export default function MessageriesPage() {
   }, [selectedConversation]);
 
   /*
-   * Aller directement au dernier message
+   * ============================================================
+   * ALLER AU DERNIER MESSAGE
+   * ============================================================
    */
 
   useEffect(() => {
@@ -586,13 +598,13 @@ export default function MessageriesPage() {
   }, [messages, selectedConversation]);
 
   /*
-   * =========================
+   * ============================================================
    * ECHO / TEMPS RÉEL
-   * =========================
+   * ============================================================
    */
 
   useEffect(() => {
-    if (!echo) {
+    if (!echo || !currentUserId) {
       return;
     }
 
@@ -605,26 +617,26 @@ export default function MessageriesPage() {
       setOnlineUsers(users);
     });
 
-    presenceChannel.joining((user: User) => {
+    presenceChannel.joining((newUser: User) => {
       setOnlineUsers((currentUsers) => {
         if (
           currentUsers.some(
             (currentUser) =>
-              currentUser.id === user.id
+              currentUser.id === newUser.id
           )
         ) {
           return currentUsers;
         }
 
-        return [...currentUsers, user];
+        return [...currentUsers, newUser];
       });
     });
 
-    presenceChannel.leaving((user: User) => {
+    presenceChannel.leaving((leavingUser: User) => {
       setOnlineUsers((currentUsers) =>
         currentUsers.filter(
           (currentUser) =>
-            currentUser.id !== user.id
+            currentUser.id !== leavingUser.id
         )
       );
     });
@@ -709,9 +721,9 @@ export default function MessageriesPage() {
   }, [selectedConversation, currentUserId]);
 
   /*
-   * =========================
+   * ============================================================
    * ENVOYER MESSAGE
-   * =========================
+   * ============================================================
    */
 
   const handleSendMessage = async () => {
@@ -797,9 +809,9 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * MESSAGE LU
-   * =========================
+   * ============================================================
    */
 
   const handleMarkAsRead = async (
@@ -862,9 +874,9 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * SUPPRIMER MESSAGE
-   * =========================
+   * ============================================================
    */
 
   const handleDeleteMessage = async (
@@ -913,9 +925,9 @@ export default function MessageriesPage() {
   };
 
   /*
-   * =========================
+   * ============================================================
    * HELPERS
-   * =========================
+   * ============================================================
    */
 
   const isUserOnline = (
@@ -926,7 +938,8 @@ export default function MessageriesPage() {
     }
 
     return onlineUsers.some(
-      (user) => user.id === userId
+      (onlineUser) =>
+        onlineUser.id === userId
     );
   };
 
@@ -981,6 +994,12 @@ export default function MessageriesPage() {
     ? isUserOnline(selectedUser.id)
     : false;
 
+  /*
+   * ============================================================
+   * RENDU
+   * ============================================================
+   */
+
   return (
     <div className="min-h-screen bg-[#050505] text-white">
       <div className="flex h-screen flex-col overflow-hidden">
@@ -990,7 +1009,6 @@ export default function MessageriesPage() {
         ====================================================== */}
 
         <header className="z-30 flex h-16 shrink-0 items-center border-b border-white/10 bg-black/90 px-4 backdrop-blur-xl md:px-8">
-
           <div className="flex w-full items-center justify-between">
 
             {/* LOGO */}
@@ -1083,8 +1101,23 @@ export default function MessageriesPage() {
                 href="/Compte"
                 className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold transition hover:border-violet-400/30 hover:bg-violet-400/10"
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-[10px] font-black text-black">
-                  {currentUserId ? "U" : "?"}
+
+                {/* AVATAR GLOBAL */}
+
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-[10px] font-black text-black">
+
+                  {user?.profile_photo_url ? (
+                    <img
+                      src={user.profile_photo_url}
+                      alt={user.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    user?.name
+                      ?.charAt(0)
+                      .toUpperCase() ?? "?"
+                  )}
+
                 </span>
 
                 <span className="hidden md:block">
@@ -1251,10 +1284,25 @@ export default function MessageriesPage() {
                         }
                         className="group flex w-full items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.06] disabled:opacity-50"
                       >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/20 to-violet-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20">
-                          {admin.name
-                            .charAt(0)
-                            .toUpperCase()}
+
+                        {/* AVATAR ADMIN */}
+
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-cyan-400/20 to-violet-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20">
+
+                          {admin.profile_photo_url ? (
+                            <img
+                              src={
+                                admin.profile_photo_url
+                              }
+                              alt={admin.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            admin.name
+                              .charAt(0)
+                              .toUpperCase()
+                          )}
+
                         </div>
 
                         <div className="min-w-0">
@@ -1357,19 +1405,31 @@ export default function MessageriesPage() {
                         {/* AVATAR */}
 
                         <div
-                          className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-black ${
+                          className={`relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl font-black ${
                             active
                               ? "bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 text-cyan-300 ring-1 ring-cyan-400/30"
                               : "bg-white/[0.05] text-zinc-400 ring-1 ring-white/10"
                           }`}
                         >
-                          {otherUser?.name
-                            ?.charAt(0)
-                            .toUpperCase() ?? "?"}
+
+                          {otherUser?.profile_photo_url ? (
+                            <img
+                              src={
+                                otherUser.profile_photo_url
+                              }
+                              alt={otherUser.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            otherUser?.name
+                              ?.charAt(0)
+                              .toUpperCase() ?? "?"
+                          )}
 
                           {online && (
                             <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#080808] bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
                           )}
+
                         </div>
 
                         {/* INFOS */}
@@ -1414,7 +1474,6 @@ export default function MessageriesPage() {
                           </div>
 
                         </div>
-
                       </button>
                     );
                   }
@@ -1453,6 +1512,7 @@ export default function MessageriesPage() {
                     </span>
 
                     <span className="absolute inset-0 rounded-[28px] border border-white/5" />
+
                   </div>
 
                   <p className="mb-2 text-xs font-bold uppercase tracking-[0.3em] text-cyan-400/70">
@@ -1492,42 +1552,81 @@ export default function MessageriesPage() {
 
                 <header className="relative flex shrink-0 items-center gap-3 border-b border-white/10 bg-black/70 px-5 py-4 backdrop-blur-xl">
 
-                  <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20">
+                  {/* ==================================================
+                      AVATAR + NOM CLIQUABLES
+                  =================================================== */}
 
-                    {selectedUser?.name
-                      ?.charAt(0)
-                      .toUpperCase() ?? "?"}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowProfile(true)
+                    }
+                    className="group flex min-w-0 flex-1 items-center gap-3 text-left"
+                    title="Voir le profil"
+                  >
 
-                    {selectedUserOnline && (
-                      <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
-                    )}
-                  </div>
+                    {/* AVATAR INTERLOCUTEUR */}
 
-                  <div className="min-w-0 flex-1">
+                    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20 transition group-hover:ring-cyan-300/50">
 
-                    <div className="flex items-center gap-2">
-
-                      <h2 className="truncate text-sm font-black text-white">
-                        {selectedUser?.name ??
-                          "Utilisateur"}
-                      </h2>
+                      {selectedUser?.profile_photo_url ? (
+                        <img
+                          src={
+                            selectedUser.profile_photo_url
+                          }
+                          alt={selectedUser.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        selectedUser?.name
+                          ?.charAt(0)
+                          .toUpperCase() ?? "?"
+                      )}
 
                       {selectedUserOnline && (
-                        <span className="hidden rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 sm:inline-block">
-                          En ligne
-                        </span>
+                        <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
                       )}
+
                     </div>
 
-                    <p className="mt-0.5 text-[11px] text-zinc-600">
-                      {selectedUserOnline
-                        ? "Disponible maintenant"
-                        : "Hors ligne"}
-                    </p>
+                    {/* NOM / STATUT */}
 
-                  </div>
+                    <div className="min-w-0 flex-1">
 
-                  <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+
+                        <h2 className="truncate text-sm font-black text-white transition group-hover:text-cyan-300">
+                          {selectedUser?.name ??
+                            "Utilisateur"}
+                        </h2>
+
+                        {selectedUserOnline && (
+                          <span className="hidden rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 sm:inline-block">
+                            En ligne
+                          </span>
+                        )}
+
+                      </div>
+
+                      <p className="mt-0.5 text-[11px] text-zinc-600">
+                        {selectedUserOnline
+                          ? "Disponible maintenant"
+                          : "Hors ligne"}
+                      </p>
+
+                    </div>
+
+                    {/* INDICATEUR PROFIL */}
+
+                    <span className="hidden rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-semibold text-zinc-500 transition group-hover:border-cyan-400/20 group-hover:bg-cyan-400/[0.05] group-hover:text-cyan-300 sm:block">
+                      Voir le profil
+                    </span>
+
+                  </button>
+
+                  {/* ACTIONS */}
+
+                  <div className="flex shrink-0 items-center gap-2">
 
                     <button
                       type="button"
@@ -1557,6 +1656,248 @@ export default function MessageriesPage() {
 
                   </div>
                 </header>
+
+                {/* ============================================
+                    FICHE PROFIL
+                ============================================= */}
+
+                {showProfile && selectedUser && (
+                  <div
+                    className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md"
+                    onClick={() =>
+                      setShowProfile(false)
+                    }
+                  >
+
+                    <div
+                      className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#090909] shadow-[0_25px_100px_rgba(0,0,0,0.7)]"
+                      onClick={(event) =>
+                        event.stopPropagation()
+                      }
+                    >
+
+                      {/* BACKGROUND PROFILE */}
+
+                      <div className="absolute inset-x-0 top-0 h-40 overflow-hidden">
+
+                        <div className="absolute -left-10 -top-20 h-60 w-60 rounded-full bg-cyan-400/[0.12] blur-[80px]" />
+
+                        <div className="absolute -right-10 -top-20 h-60 w-60 rounded-full bg-violet-500/[0.14] blur-[80px]" />
+
+                        <div className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full bg-fuchsia-500/[0.08] blur-[80px]" />
+
+                      </div>
+
+                      {/* BOUTON FERMER */}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowProfile(false)
+                        }
+                        className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-zinc-400 backdrop-blur-md transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+                        title="Fermer"
+                      >
+                        ✕
+                      </button>
+
+                      {/* CONTENU */}
+
+                      <div className="relative px-6 pb-7 pt-10">
+
+                        {/* PHOTO */}
+
+                        <div className="flex justify-center">
+
+                          <div className="relative">
+
+                            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 text-4xl font-black text-cyan-300 shadow-[0_0_50px_rgba(34,211,238,0.12)] ring-4 ring-black">
+
+                              {selectedUser.profile_photo_url ? (
+                                <img
+                                  src={
+                                    selectedUser.profile_photo_url
+                                  }
+                                  alt={
+                                    selectedUser.name
+                                  }
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                selectedUser.name
+                                  .charAt(0)
+                                  .toUpperCase()
+                              )}
+
+                            </div>
+
+                            {/* STATUT */}
+
+                            <span
+                              className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-full border-4 border-[#090909] ${
+                                selectedUserOnline
+                                  ? "bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)]"
+                                  : "bg-zinc-700"
+                              }`}
+                            />
+
+                          </div>
+
+                        </div>
+
+                        {/* NOM */}
+
+                        <div className="mt-5 text-center">
+
+                          <h3 className="text-2xl font-black tracking-tight text-white">
+                            {selectedUser.name}
+                          </h3>
+
+                          {/* ROLE */}
+
+                          <div className="mt-2 flex items-center justify-center gap-2">
+
+                            <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                              {selectedUser.role ===
+                              "admin"
+                                ? "Administrateur ShopX"
+                                : selectedUser.role ===
+                                  "vendeur"
+                                ? "Vendeur ShopX"
+                                : "Client ShopX"}
+                            </span>
+
+                            <span
+                              className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                                selectedUserOnline
+                                  ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-400"
+                                  : "border-zinc-700/40 bg-zinc-800/40 text-zinc-500"
+                              }`}
+                            >
+                              {selectedUserOnline
+                                ? "En ligne"
+                                : "Hors ligne"}
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                        {/* INFORMATIONS */}
+
+                        <div className="mt-7 space-y-3">
+
+                          {/* EMAIL */}
+
+                          <div className="rounded-2xl border border-white/5 bg-white/[0.035] p-4">
+
+                            <div className="flex items-start gap-3">
+
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-400/10 bg-cyan-400/[0.06] text-cyan-300">
+                                @
+                              </div>
+
+                              <div className="min-w-0">
+
+                                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-600">
+                                  Adresse email
+                                </p>
+
+                                <p className="mt-1 break-all text-sm font-semibold text-zinc-200">
+                                  {selectedUser.email ||
+                                    "Email non renseigné"}
+                                </p>
+
+                              </div>
+
+                            </div>
+
+                          </div>
+
+                          {/* STATUT */}
+
+                          <div className="rounded-2xl border border-white/5 bg-white/[0.035] p-4">
+
+                            <div className="flex items-start gap-3">
+
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                                  selectedUserOnline
+                                    ? "border border-emerald-400/10 bg-emerald-400/[0.06] text-emerald-400"
+                                    : "border border-white/5 bg-white/[0.03] text-zinc-500"
+                                }`}
+                              >
+                                ●
+                              </div>
+
+                              <div>
+
+                                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-600">
+                                  Statut
+                                </p>
+
+                                <p
+                                  className={`mt-1 text-sm font-semibold ${
+                                    selectedUserOnline
+                                      ? "text-emerald-400"
+                                      : "text-zinc-400"
+                                  }`}
+                                >
+                                  {selectedUserOnline
+                                    ? "Disponible maintenant"
+                                    : "Hors ligne"}
+                                </p>
+
+                              </div>
+
+                            </div>
+
+                          </div>
+
+                          {/* IDENTIFIANT */}
+
+                          <div className="rounded-2xl border border-white/5 bg-white/[0.035] p-4">
+
+                            <div className="flex items-start gap-3">
+
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/10 bg-violet-400/[0.06] text-violet-300">
+                                #
+                              </div>
+
+                              <div>
+
+                                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-600">
+                                  Identifiant
+                                </p>
+
+                                <p className="mt-1 text-sm font-semibold text-zinc-200">
+                                  #{selectedUser.id}
+                                </p>
+
+                              </div>
+
+                            </div>
+
+                          </div>
+
+                        </div>
+
+                        {/* BOUTON FERMER */}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowProfile(false)
+                          }
+                          className="mt-6 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-zinc-300 transition hover:border-cyan-400/20 hover:bg-cyan-400/[0.06] hover:text-white"
+                        >
+                          Fermer le profil
+                        </button>
+
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* ============================================
                     MESSAGES

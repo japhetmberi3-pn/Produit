@@ -14,6 +14,8 @@ interface User {
   id: number;
   name: string;
   email?: string;
+  profile_photo?: string | null;
+  profile_photo_url?: string | null;
 }
 
 interface Product {
@@ -400,18 +402,45 @@ export default function ProduitDetailPage() {
                 </AnimatedContainer>
               )}
 
-              {/* Vendeur */}
+              {/* ================================================= */}
+              {/* VENDEUR                                            */}
+              {/* ================================================= */}
+
               {product.user && (
                 <AnimatedContainer delay={0.6}>
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition duration-300 hover:border-purple-500/20 hover:bg-white/[0.05]">
+                  <div className="mt-4 flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition duration-300 hover:border-purple-500/20 hover:bg-white/[0.05]">
 
-                    <p className="text-xs uppercase tracking-wider text-gray-500">
-                      Vendeur
-                    </p>
+                    {/* Photo vendeur */}
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 text-sm font-black text-purple-300 ring-1 ring-purple-400/20">
+                      {product.user.profile_photo_url ? (
+                        <img
+                          src={product.user.profile_photo_url}
+                          alt={product.user.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        product.user.name
+                          .charAt(0)
+                          .toUpperCase()
+                      )}
+                    </div>
 
-                    <p className="mt-1 font-semibold text-white">
-                      {product.user.name}
-                    </p>
+                    {/* Informations vendeur */}
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-wider text-gray-500">
+                        Vendeur
+                      </p>
+
+                      <p className="mt-1 truncate font-semibold text-white">
+                        {product.user.name}
+                      </p>
+
+                      {product.user.email && (
+                        <p className="mt-0.5 truncate text-xs text-gray-500">
+                          {product.user.email}
+                        </p>
+                      )}
+                    </div>
 
                   </div>
                 </AnimatedContainer>

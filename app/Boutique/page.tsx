@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+
 import AnimatedContainer from "@/app/components/AnimatedContainer";
+import Navbar from "@/app/components/Navbar";
 
 interface Product {
   id: number;
@@ -20,7 +22,8 @@ interface Shop {
 }
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8000/api";
 
 export default function BoutiquesPage() {
   const [shops, setShops] = useState<Shop[]>([]);
@@ -90,89 +93,24 @@ export default function BoutiquesPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       {/* =========================
-          NAVIGATION
+          NAVIGATION GLOBALE SHOPX
       ========================== */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="group flex items-center gap-3"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-lg shadow-blue-500/20">
-              <span className="text-xl font-black">X</span>
-            </div>
 
-            <span className="text-2xl font-black tracking-tight">
-              Shop<span className="text-blue-500">X</span>
-            </span>
-          </Link>
-
-          {/* Navigation */}
-          <div className="hidden items-center gap-7 md:flex">
-            <Link
-              href="/"
-              className="text-sm text-gray-400 transition hover:text-white"
-            >
-              Accueil
-            </Link>
-
-            <Link
-              href="/Produits"
-              className="text-sm text-gray-400 transition hover:text-white"
-            >
-              Catalogue
-            </Link>
-
-            <Link
-              href="/Boutique"
-              className="text-sm font-semibold text-blue-400"
-            >
-              Boutiques
-            </Link>
-
-            <Link
-              href="/Commandes"
-              className="text-sm text-gray-400 transition hover:text-white"
-            >
-              Commandes
-            </Link>
-
-            <Link
-              href="/Compte"
-              className="text-sm text-gray-400 transition hover:text-white"
-            >
-              Mon compte
-            </Link>
-          </div>
-
-          {/* Boutons */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="hidden rounded-xl border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 transition hover:border-blue-500 hover:text-white sm:block"
-            >
-              Accueil
-            </Link>
-
-            <Link
-              href="/Produits"
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500"
-            >
-              Acheter
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* =========================
           CONTENU
       ========================== */}
+
       <div className="mx-auto max-w-7xl px-6 py-12">
-        {/* Header */}
+        {/* =========================
+            HEADER
+        ========================== */}
+
         <AnimatedContainer>
           <section className="relative mb-12 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-blue-950/40 via-gray-950 to-violet-950/30 p-8 md:p-12">
             {/* Glow */}
+
             <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-blue-600/20 blur-3xl" />
 
             <div className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full bg-violet-600/10 blur-3xl" />
@@ -219,6 +157,7 @@ export default function BoutiquesPage() {
         {/* =========================
             LOADING
         ========================== */}
+
         {loading && (
           <AnimatedContainer delay={0.1}>
             <div className="flex min-h-[300px] items-center justify-center">
@@ -236,6 +175,7 @@ export default function BoutiquesPage() {
         {/* =========================
             ERREUR
         ========================== */}
+
         {!loading && error && (
           <AnimatedContainer delay={0.1}>
             <div className="mx-auto max-w-2xl rounded-2xl border border-red-500/20 bg-red-500/10 p-8 text-center">
@@ -269,6 +209,7 @@ export default function BoutiquesPage() {
         {/* =========================
             AUCUNE BOUTIQUE
         ========================== */}
+
         {!loading && !error && shops.length === 0 && (
           <AnimatedContainer delay={0.2}>
             <div className="rounded-3xl border border-white/10 bg-gray-950 p-12 text-center">
@@ -298,6 +239,7 @@ export default function BoutiquesPage() {
         {/* =========================
             BOUTIQUES
         ========================== */}
+
         {!loading && !error && shops.length > 0 && (
           <>
             <AnimatedContainer delay={0.15}>
@@ -321,7 +263,8 @@ export default function BoutiquesPage() {
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {shops.map((shop, index) => {
-                const productCount = shop.products?.length || 0;
+                const productCount =
+                  shop.products?.length || 0;
 
                 return (
                   <AnimatedContainer
@@ -330,9 +273,11 @@ export default function BoutiquesPage() {
                   >
                     <div className="group relative h-full overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-gray-950 to-black p-6 transition duration-300 hover:-translate-y-2 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-500/10">
                       {/* Glow */}
+
                       <div className="pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-blue-600/10 blur-3xl transition group-hover:bg-blue-600/20" />
 
                       {/* Icône */}
+
                       <div className="relative mb-6 flex items-center justify-between">
                         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/20 to-violet-500/10 text-3xl shadow-lg shadow-blue-500/5">
                           🏪
@@ -344,17 +289,20 @@ export default function BoutiquesPage() {
                       </div>
 
                       {/* Nom */}
+
                       <h2 className="relative text-2xl font-bold transition group-hover:text-blue-400">
                         {shop.name}
                       </h2>
 
                       {/* Description */}
+
                       <p className="mt-3 min-h-[56px] text-sm leading-6 text-gray-400">
                         {shop.description ||
                           "Cette boutique n'a pas encore ajouté de description."}
                       </p>
 
                       {/* Produits */}
+
                       <div className="mt-6 rounded-2xl border border-white/5 bg-white/[0.03] p-4">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-400">
@@ -367,12 +315,16 @@ export default function BoutiquesPage() {
                         </div>
 
                         {/* Petite barre */}
+
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
                             style={{
                               width: `${Math.min(
-                                Math.max(productCount * 10, 8),
+                                Math.max(
+                                  productCount * 10,
+                                  8
+                                ),
                                 100
                               )}%`,
                             }}
@@ -381,6 +333,7 @@ export default function BoutiquesPage() {
                       </div>
 
                       {/* Footer carte */}
+
                       <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-5">
                         <div>
                           <p className="text-xs text-gray-500">
@@ -411,6 +364,7 @@ export default function BoutiquesPage() {
       {/* =========================
           FOOTER
       ========================== */}
+
       <footer className="mt-16 border-t border-white/10 bg-gray-950/50">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-gray-500 md:flex-row md:items-center md:justify-between">
           <p>

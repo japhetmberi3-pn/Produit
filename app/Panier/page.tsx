@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AnimatedContainer from "@/app/components/AnimatedContainer";
+import { useAuth } from "@/app/context/AuthContext";
 
 interface Product {
   id: number;
@@ -35,19 +36,29 @@ interface ApiResponse {
     id: number;
     user_id: number;
     status: string;
+    order_type?: string;
     items?: unknown[];
   };
   errors?: Record<string, string[]>;
 }
 
-interface User {
-  id: number;
-  name: string;
-  email?: string;
-  role?: string;
+interface DeliveryForm {
+  recipient_name: string;
+  phone: string;
+  city: string;
+  neighborhood: string;
+  address: string;
+  address_details: string;
+  latitude: string;
+  longitude: string;
+  delivery_note: string;
+  delivery_date: string;
+  delivery_time: string;
 }
 
 export default function PanierPage() {
+  const { user } = useAuth();
+
   const [items, setItems] = useState<CartItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
 
@@ -58,14 +69,39 @@ export default function PanierPage() {
   const [removingItem, setRemovingItem] =
     useState<number | null>(null);
 
+  const [showDeliveryForm, setShowDeliveryForm] =
+    useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [user, setUser] = useState<User | null>(null);
+  const [delivery, setDelivery] =
+    useState<DeliveryForm>({
+      recipient_name: "",
+      phone: "",
+      city: "",
+      neighborhood: "",
+      address: "",
+      address_details: "",
+      latitude: "",
+      longitude: "",
+      delivery_note: "",
+      delivery_date: "",
+      delivery_time: "",
+    });
 
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL ||
     "http://127.0.0.1:8000/api";
+
+  // =========================
+  // URL PHOTO DE PROFIL
+  // =========================
+
+  const profilePhotoUrl =
+    user?.profile_photo_url ||
+    user?.profile_photo ||
+    null;
 
   // =========================
   // RÉCUPÉRER LE PANIER
@@ -76,7 +112,8 @@ export default function PanierPage() {
       setLoading(true);
       setError("");
 
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token");
 
       if (!token) {
         setError("Vous devez être connecté.");
@@ -114,7 +151,8 @@ export default function PanierPage() {
       }
 
       if (!response.ok) {
-        const errorData = data as ApiResponse;
+        const errorData =
+          data as ApiResponse;
 
         throw new Error(
           errorData.message ||
@@ -122,7 +160,8 @@ export default function PanierPage() {
         );
       }
 
-      const cartData = data as CartResponse;
+      const cartData =
+        data as CartResponse;
 
       setItems(
         Array.isArray(cartData.items)
@@ -130,12 +169,17 @@ export default function PanierPage() {
           : []
       );
     } catch (err) {
-      console.error("Erreur panier :", err);
+      console.error(
+        "Erreur panier :",
+        err
+      );
 
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur est survenue.");
+        setError(
+          "Une erreur est survenue."
+        );
       }
     } finally {
       setLoading(false);
@@ -147,25 +191,16 @@ export default function PanierPage() {
   // =========================
 
   useEffect(() => {
-    const storedUser =
-      localStorage.getItem("user");
-
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        setUser(null);
-      }
-    }
-
     fetchCart();
   }, []);
 
   // =========================
-  // SÉLECTIONNER / DÉSÉLECTIONNER
+  // SÉLECTION
   // =========================
 
-  const toggleSelection = (itemId: number) => {
+  const toggleSelection = (
+    itemId: number
+  ) => {
     setError("");
     setSuccess("");
 
@@ -189,7 +224,8 @@ export default function PanierPage() {
     setSuccess("");
 
     if (
-      selectedItems.length === items.length &&
+      selectedItems.length ===
+        items.length &&
       items.length > 0
     ) {
       setSelectedItems([]);
@@ -201,7 +237,7 @@ export default function PanierPage() {
   };
 
   // =========================
-  // MODIFIER LA QUANTITÉ
+  // MODIFIER QUANTITÉ
   // =========================
 
   const updateQuantity = async (
@@ -217,7 +253,10 @@ export default function PanierPage() {
       return;
     }
 
-    if (newQuantity > item.product.stock) {
+    if (
+      newQuantity >
+      item.product.stock
+    ) {
       setError(
         `Stock insuffisant. Il reste seulement ${item.product.stock} produit(s).`
       );
@@ -229,10 +268,13 @@ export default function PanierPage() {
       setError("");
       setSuccess("");
 
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token");
 
       if (!token) {
-        setError("Vous devez être connecté.");
+        setError(
+          "Vous devez être connecté."
+        );
         return;
       }
 
@@ -242,7 +284,8 @@ export default function PanierPage() {
           method: "PATCH",
           headers: {
             Accept: "application/json",
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
@@ -256,7 +299,9 @@ export default function PanierPage() {
       let data: ApiResponse = {};
 
       try {
-        data = text ? JSON.parse(text) : {};
+        data = text
+          ? JSON.parse(text)
+          : {};
       } catch {
         throw new Error(
           "Le serveur a retourné une réponse invalide."
@@ -284,14 +329,15 @@ export default function PanierPage() {
       }
 
       setItems((previous) =>
-        previous.map((currentItem) =>
-          currentItem.id === item.id
-            ? {
-                ...currentItem,
-                quantity:
-                  data.item!.quantity,
-              }
-            : currentItem
+        previous.map(
+          (currentItem) =>
+            currentItem.id === item.id
+              ? {
+                  ...currentItem,
+                  quantity:
+                    data.item!.quantity,
+                }
+              : currentItem
         )
       );
     } catch (err) {
@@ -303,7 +349,9 @@ export default function PanierPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur est survenue.");
+        setError(
+          "Une erreur est survenue."
+        );
       }
     } finally {
       setUpdatingItem(null);
@@ -311,7 +359,7 @@ export default function PanierPage() {
   };
 
   // =========================
-  // SUPPRIMER UN ARTICLE
+  // SUPPRIMER ARTICLE
   // =========================
 
   const removeItem = async (
@@ -322,10 +370,13 @@ export default function PanierPage() {
       setError("");
       setSuccess("");
 
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token");
 
       if (!token) {
-        setError("Vous devez être connecté.");
+        setError(
+          "Vous devez être connecté."
+        );
         return;
       }
 
@@ -345,7 +396,9 @@ export default function PanierPage() {
       let data: ApiResponse = {};
 
       try {
-        data = text ? JSON.parse(text) : {};
+        data = text
+          ? JSON.parse(text)
+          : {};
       } catch {
         throw new Error(
           "Le serveur a retourné une réponse invalide."
@@ -390,7 +443,9 @@ export default function PanierPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur est survenue.");
+        setError(
+          "Une erreur est survenue."
+        );
       }
     } finally {
       setRemovingItem(null);
@@ -407,14 +462,14 @@ export default function PanierPage() {
       selectedItems.includes(item.id)
     );
 
-  // =========================
-  // CALCUL DU TOTAL
-  // =========================
-
   const itemsToBuy =
     selectedCartItems.length > 0
       ? selectedCartItems
       : items;
+
+  // =========================
+  // TOTAL
+  // =========================
 
   const total = itemsToBuy.reduce(
     (sum, item) =>
@@ -425,17 +480,82 @@ export default function PanierPage() {
   );
 
   // =========================
-  // ACHETER
+  // POSITION GPS
   // =========================
 
-  const buySelectedItems = async () => {
+  const getCurrentLocation = () => {
+    setError("");
+
+    if (!navigator.geolocation) {
+      setError(
+        "La géolocalisation n'est pas disponible sur votre navigateur."
+      );
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setDelivery((previous) => ({
+          ...previous,
+          latitude:
+            position.coords.latitude.toString(),
+          longitude:
+            position.coords.longitude.toString(),
+        }));
+
+        setSuccess(
+          "Position GPS récupérée avec succès."
+        );
+      },
+      (geoError) => {
+        console.error(
+          "Erreur géolocalisation :",
+          geoError
+        );
+
+        setError(
+          "Impossible de récupérer votre position. Autorisez la géolocalisation dans votre navigateur."
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  // =========================
+  // MODIFIER LIVRAISON
+  // =========================
+
+  const handleDeliveryChange = (
+    field: keyof DeliveryForm,
+    value: string
+  ) => {
+    setDelivery((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+
+    setError("");
+    setSuccess("");
+  };
+
+  // =========================
+  // ACHAT IMMÉDIAT
+  // =========================
+
+  const buyNow = async () => {
     const productsToBuy =
       selectedCartItems.length > 0
         ? selectedCartItems
         : items;
 
     if (productsToBuy.length === 0) {
-      setError("Votre panier est vide.");
+      setError(
+        "Votre panier est vide."
+      );
       return;
     }
 
@@ -478,13 +598,6 @@ export default function PanierPage() {
           })
         );
 
-      console.log(
-        "Commande envoyée à Laravel :",
-        {
-          items: orderItems,
-        }
-      );
-
       const response = await fetch(
         `${API_URL}/orders`,
         {
@@ -496,12 +609,14 @@ export default function PanierPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
+            order_type: "purchase",
             items: orderItems,
           }),
         }
       );
 
-      const text = await response.text();
+      const text =
+        await response.text();
 
       let data: ApiResponse = {};
 
@@ -514,11 +629,6 @@ export default function PanierPage() {
           "Le serveur a retourné une réponse invalide."
         );
       }
-
-      console.log(
-        "Réponse achat Laravel :",
-        data
-      );
 
       if (response.status === 401) {
         localStorage.removeItem("token");
@@ -564,7 +674,7 @@ export default function PanierPage() {
       await fetchCart();
     } catch (err) {
       console.error(
-        "Erreur achat :",
+        "Erreur achat immédiat :",
         err
       );
 
@@ -581,6 +691,265 @@ export default function PanierPage() {
   };
 
   // =========================
+  // OUVRIR LIVRAISON
+  // =========================
+
+  const openDeliveryForm = () => {
+    if (itemsToBuy.length === 0) {
+      setError(
+        "Votre panier est vide."
+      );
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setShowDeliveryForm(true);
+
+    if (
+      !delivery.latitude ||
+      !delivery.longitude
+    ) {
+      getCurrentLocation();
+    }
+  };
+
+  // =========================
+  // COMMANDE AVEC LIVRAISON
+  // =========================
+
+  const orderWithDelivery =
+    async () => {
+      const productsToBuy =
+        selectedCartItems.length > 0
+          ? selectedCartItems
+          : items;
+
+      if (productsToBuy.length === 0) {
+        setError(
+          "Votre panier est vide."
+        );
+        return;
+      }
+
+      const stockProblem =
+        productsToBuy.find(
+          (item) =>
+            item.quantity >
+            item.product.stock
+        );
+
+      if (stockProblem) {
+        setError(
+          `Stock insuffisant pour "${stockProblem.product.name}".`
+        );
+        return;
+      }
+
+      try {
+        setBuying(true);
+        setError("");
+        setSuccess("");
+
+        const token =
+          localStorage.getItem(
+            "token"
+          );
+
+        if (!token) {
+          setError(
+            "Vous devez être connecté."
+          );
+          return;
+        }
+
+        const requiredFields: Array<
+          keyof DeliveryForm
+        > = [
+          "recipient_name",
+          "phone",
+          "city",
+          "neighborhood",
+          "address",
+          "latitude",
+          "longitude",
+          "delivery_date",
+          "delivery_time",
+        ];
+
+        const missingField =
+          requiredFields.find(
+            (field) =>
+              !delivery[field].trim()
+          );
+
+        if (missingField) {
+          setError(
+            "Veuillez remplir toutes les informations de livraison obligatoires."
+          );
+          return;
+        }
+
+        const orderItems =
+          productsToBuy.map(
+            (item) => ({
+              product_id:
+                item.product_id,
+              quantity:
+                item.quantity,
+            })
+          );
+
+        const response = await fetch(
+          `${API_URL}/orders`,
+          {
+            method: "POST",
+            headers: {
+              Accept:
+                "application/json",
+              "Content-Type":
+                "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              order_type: "delivery",
+              items: orderItems,
+
+              recipient_name:
+                delivery.recipient_name,
+
+              phone: delivery.phone,
+
+              city: delivery.city,
+
+              neighborhood:
+                delivery.neighborhood,
+
+              address:
+                delivery.address,
+
+              address_details:
+                delivery.address_details ||
+                null,
+
+              latitude: Number(
+                delivery.latitude
+              ),
+
+              longitude: Number(
+                delivery.longitude
+              ),
+
+              delivery_note:
+                delivery.delivery_note ||
+                null,
+
+              delivery_date:
+                delivery.delivery_date,
+
+              delivery_time:
+                delivery.delivery_time,
+            }),
+          }
+        );
+
+        const text =
+          await response.text();
+
+        let data: ApiResponse = {};
+
+        try {
+          data = text
+            ? JSON.parse(text)
+            : {};
+        } catch {
+          throw new Error(
+            "Le serveur a retourné une réponse invalide."
+          );
+        }
+
+        if (response.status === 401) {
+          localStorage.removeItem(
+            "token"
+          );
+          localStorage.removeItem(
+            "user"
+          );
+          window.location.href = "/";
+          return;
+        }
+
+        if (
+          response.status === 422 &&
+          data.errors
+        ) {
+          const validationErrors =
+            Object.values(
+              data.errors
+            )
+              .flat()
+              .join(" ");
+
+          throw new Error(
+            validationErrors ||
+              "Les informations de livraison sont invalides."
+          );
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            data.message ||
+              "Impossible de créer la commande."
+          );
+        }
+
+        if (!data.order) {
+          throw new Error(
+            "Laravel n'a pas retourné la commande créée."
+          );
+        }
+
+        setSelectedItems([]);
+        setShowDeliveryForm(false);
+
+        setDelivery({
+          recipient_name: "",
+          phone: "",
+          city: "",
+          neighborhood: "",
+          address: "",
+          address_details: "",
+          latitude: "",
+          longitude: "",
+          delivery_note: "",
+          delivery_date: "",
+          delivery_time: "",
+        });
+
+        setSuccess(
+          `Commande avec livraison créée avec succès ! Commande #${data.order.id}.`
+        );
+
+        await fetchCart();
+      } catch (err) {
+        console.error(
+          "Erreur commande livraison :",
+          err
+        );
+
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError(
+            "Une erreur est survenue pendant la commande."
+          );
+        }
+      } finally {
+        setBuying(false);
+      }
+    };
+
+  // =========================
   // CHARGEMENT
   // =========================
 
@@ -591,7 +960,6 @@ export default function PanierPage() {
         <div className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/[0.08] blur-[120px]" />
 
         <AnimatedContainer>
-
           <div className="relative text-center">
 
             <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-blue-400 border-r-blue-400 shadow-[0_0_25px_rgba(37,99,235,0.3)]" />
@@ -601,7 +969,6 @@ export default function PanierPage() {
             </p>
 
           </div>
-
         </AnimatedContainer>
 
       </main>
@@ -615,9 +982,7 @@ export default function PanierPage() {
   return (
     <main className="min-h-screen bg-[#020407] text-white">
 
-      {/* =====================================================
-          BACKGROUND ELECTRIC
-      ====================================================== */}
+      {/* BACKGROUND */}
 
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
 
@@ -629,15 +994,11 @@ export default function PanierPage() {
 
       </div>
 
-      {/* =====================================================
-          NAVIGATION SHOPX
-      ====================================================== */}
+      {/* NAVIGATION */}
 
       <header className="sticky top-0 z-50 border-b border-blue-400/10 bg-[#020407]/95 backdrop-blur-2xl">
 
         <div className="mx-auto flex h-[70px] max-w-7xl items-center gap-4 px-4 md:px-8">
-
-          {/* LOGO */}
 
           <Link
             href="/"
@@ -670,8 +1031,6 @@ export default function PanierPage() {
             </div>
 
           </Link>
-
-          {/* NAVIGATION DESKTOP */}
 
           <nav className="hidden flex-1 items-center justify-center gap-1 xl:flex">
 
@@ -719,11 +1078,7 @@ export default function PanierPage() {
 
           </nav>
 
-          {/* ACTIONS */}
-
           <div className="ml-auto flex items-center gap-2">
-
-            {/* NOTIFICATIONS */}
 
             <Link
               href="/Notifications"
@@ -733,18 +1088,36 @@ export default function PanierPage() {
               🔔
             </Link>
 
-            {/* COMPTE */}
+            {/* =========================================
+                COMPTE + PHOTO DE PROFIL
+            ========================================== */}
 
             <Link
               href="/Compte"
               className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-blue-400/30 hover:bg-blue-500/10"
             >
 
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-[10px] font-black text-black shadow-[0_0_15px_rgba(37,99,235,0.3)]">
-                {user?.name
-                  ?.charAt(0)
-                  .toUpperCase() ?? "?"}
-              </span>
+              {profilePhotoUrl ? (
+                <img
+                  src={profilePhotoUrl}
+                  alt={
+                    user?.name
+                      ? `Photo de ${user.name}`
+                      : "Photo de profil"
+                  }
+                  className="h-7 w-7 rounded-full object-cover ring-1 ring-blue-400/40 shadow-[0_0_15px_rgba(37,99,235,0.25)]"
+                  onError={(event) => {
+                    event.currentTarget.style.display =
+                      "none";
+                  }}
+                />
+              ) : (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-[10px] font-black text-black shadow-[0_0_15px_rgba(37,99,235,0.3)]">
+                  {user?.name
+                    ?.charAt(0)
+                    .toUpperCase() ?? "?"}
+                </span>
+              )}
 
               <span className="hidden text-sm font-semibold md:block">
                 Mon compte
@@ -756,7 +1129,7 @@ export default function PanierPage() {
 
         </div>
 
-        {/* NAVIGATION MOBILE */}
+        {/* NAV MOBILE */}
 
         <div className="border-t border-white/[0.04] xl:hidden">
 
@@ -817,15 +1190,11 @@ export default function PanierPage() {
 
       </header>
 
-      {/* =====================================================
-          CONTENU
-      ====================================================== */}
+      {/* CONTENU */}
 
       <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
 
-        {/* =================================================
-            TITRE
-        ================================================== */}
+        {/* TITRE */}
 
         <AnimatedContainer>
 
@@ -860,8 +1229,10 @@ export default function PanierPage() {
                   </h1>
 
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-500">
-                    Vérifiez vos articles, ajustez les
-                    quantités et passez votre commande.
+                    Vérifiez vos articles,
+                    ajustez les quantités et
+                    choisissez votre mode
+                    d'achat.
                   </p>
 
                 </div>
@@ -886,9 +1257,7 @@ export default function PanierPage() {
 
         </AnimatedContainer>
 
-        {/* =================================================
-            ERREUR
-        ================================================== */}
+        {/* ERREUR */}
 
         {error && (
           <AnimatedContainer delay={0.1}>
@@ -900,9 +1269,7 @@ export default function PanierPage() {
           </AnimatedContainer>
         )}
 
-        {/* =================================================
-            SUCCÈS
-        ================================================== */}
+        {/* SUCCÈS */}
 
         {success && (
           <AnimatedContainer delay={0.1}>
@@ -914,9 +1281,7 @@ export default function PanierPage() {
           </AnimatedContainer>
         )}
 
-        {/* =================================================
-            PANIER VIDE
-        ================================================== */}
+        {/* PANIER VIDE */}
 
         {items.length === 0 ? (
 
@@ -933,8 +1298,9 @@ export default function PanierPage() {
               </h2>
 
               <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-600">
-                Découvrez notre catalogue et ajoutez
-                vos produits préférés à votre panier.
+                Découvrez notre catalogue et
+                ajoutez vos produits préférés à
+                votre panier.
               </p>
 
               <Link
@@ -952,9 +1318,7 @@ export default function PanierPage() {
 
           <div className="space-y-5">
 
-            {/* =================================================
-                BARRE SÉLECTION
-            ================================================== */}
+            {/* SÉLECTION */}
 
             <AnimatedContainer delay={0.15}>
 
@@ -973,7 +1337,8 @@ export default function PanierPage() {
                     </p>
 
                     <p className="text-xs text-zinc-600">
-                      {selectedItems.length > 0
+                      {selectedItems.length >
+                      0
                         ? `${selectedItems.length} article(s) sélectionné(s)`
                         : "Tous les articles seront achetés"}
                     </p>
@@ -998,9 +1363,7 @@ export default function PanierPage() {
 
             </AnimatedContainer>
 
-            {/* =================================================
-                ARTICLES
-            ================================================== */}
+            {/* ARTICLES */}
 
             {items.map((item, index) => {
 
@@ -1037,8 +1400,6 @@ export default function PanierPage() {
                     }`}
                   >
 
-                    {/* LIGNE ÉLECTRIQUE */}
-
                     <div
                       className={`absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400 to-transparent transition ${
                         isSelected
@@ -1047,13 +1408,9 @@ export default function PanierPage() {
                       }`}
                     />
 
-                    {/* GLOW */}
-
                     <div className="pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-blue-500/[0.05] blur-[70px] transition group-hover:bg-blue-500/[0.1]" />
 
                     <div className="relative flex flex-col gap-5 p-5 md:flex-row md:items-center md:p-6">
-
-                      {/* CHECKBOX */}
 
                       <div className="flex items-center">
 
@@ -1074,13 +1431,9 @@ export default function PanierPage() {
 
                       </div>
 
-                      {/* ICÔNE PRODUIT */}
-
                       <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-blue-400/15 bg-gradient-to-br from-blue-500/10 to-cyan-400/[0.03] text-2xl text-blue-300">
                         ◈
                       </div>
-
-                      {/* PRODUIT */}
 
                       <div className="min-w-0 flex-1">
 
@@ -1116,7 +1469,10 @@ export default function PanierPage() {
                           <span className="text-xs text-zinc-600">
                             Stock :{" "}
                             <span className="text-emerald-400">
-                              {item.product.stock}
+                              {
+                                item.product
+                                  .stock
+                              }
                             </span>
                           </span>
 
@@ -1133,7 +1489,8 @@ export default function PanierPage() {
                           onClick={() =>
                             updateQuantity(
                               item,
-                              item.quantity - 1
+                              item.quantity -
+                                1
                             )
                           }
                           disabled={
@@ -1142,11 +1499,6 @@ export default function PanierPage() {
                             isRemoving
                           }
                           className="flex h-9 w-9 items-center justify-center rounded-lg text-lg text-zinc-400 transition hover:bg-blue-500/10 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-30"
-                          title={
-                            item.quantity === 1
-                              ? "Retirer l'article du panier"
-                              : "Diminuer la quantité"
-                          }
                         >
                           −
                         </button>
@@ -1163,7 +1515,8 @@ export default function PanierPage() {
                           onClick={() =>
                             updateQuantity(
                               item,
-                              item.quantity + 1
+                              item.quantity +
+                                1
                             )
                           }
                           disabled={
@@ -1227,9 +1580,7 @@ export default function PanierPage() {
               );
             })}
 
-            {/* =================================================
-                RÉSUMÉ
-            ================================================== */}
+            {/* RÉSUMÉ */}
 
             <AnimatedContainer
               delay={
@@ -1253,7 +1604,8 @@ export default function PanierPage() {
                       </p>
 
                       <p className="mt-2 text-sm text-zinc-500">
-                        {selectedCartItems.length > 0
+                        {selectedCartItems.length >
+                        0
                           ? `${selectedCartItems.length} article(s) sélectionné(s)`
                           : "Tout le panier sera acheté"}
                       </p>
@@ -1279,42 +1631,469 @@ export default function PanierPage() {
 
                   </div>
 
-                  {/* BOUTON ACHAT */}
+                  {/* DEUX OPTIONS */}
 
-                  <button
-                    type="button"
-                    onClick={buySelectedItems}
-                    disabled={
-                      items.length === 0 ||
-                      buying
-                    }
-                    className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 py-4 text-sm font-black text-white shadow-[0_0_30px_rgba(37,99,235,0.2)] transition hover:shadow-[0_0_45px_rgba(37,99,235,0.4)] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:bg-none disabled:text-zinc-500 disabled:shadow-none"
-                  >
+                  <div className="grid gap-4 md:grid-cols-2">
 
-                    <span className="relative z-10">
+                    {/* ACHAT IMMÉDIAT */}
 
-                      {buying
-                        ? "Traitement de l'achat..."
-                        : selectedCartItems.length > 0
-                        ? `Acheter ${
-                            selectedCartItems.length
-                          } article${
-                            selectedCartItems.length >
-                            1
-                              ? "s"
-                              : ""
-                          }`
-                        : "Acheter tout le panier"}
+                    <button
+                      type="button"
+                      onClick={
+                        buyNow
+                      }
+                      disabled={
+                        items.length ===
+                          0 ||
+                        buying
+                      }
+                      className="group relative overflow-hidden rounded-2xl border border-blue-400/25 bg-blue-500/[0.07] p-5 text-left transition hover:border-blue-400/50 hover:bg-blue-500/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
 
-                    </span>
+                      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10 text-2xl">
+                        🛒
+                      </div>
 
-                  </button>
+                      <p className="text-lg font-black">
+                        Acheter maintenant
+                      </p>
+
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">
+                        Achetez immédiatement sans
+                        renseigner d'informations de
+                        livraison.
+                      </p>
+
+                      <div className="mt-5 text-sm font-black text-blue-300">
+                        {buying
+                          ? "Traitement..."
+                          : "Acheter →"}
+                      </div>
+
+                    </button>
+
+                    {/* LIVRAISON */}
+
+                    <button
+                      type="button"
+                      onClick={
+                        openDeliveryForm
+                      }
+                      disabled={
+                        items.length ===
+                          0 ||
+                        buying
+                      }
+                      className="group relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.04] p-5 text-left transition hover:border-cyan-400/50 hover:bg-cyan-400/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+
+                      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-400/10 text-2xl">
+                        📦
+                      </div>
+
+                      <p className="text-lg font-black">
+                        Commander avec livraison
+                      </p>
+
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">
+                        Renseignez votre adresse et
+                        choisissez la date et l'heure
+                        de livraison.
+                      </p>
+
+                      <div className="mt-5 text-sm font-black text-cyan-300">
+                        Commander →
+                      </div>
+
+                    </button>
+
+                  </div>
 
                 </div>
 
               </section>
 
             </AnimatedContainer>
+
+            {/* FORMULAIRE LIVRAISON */}
+
+            {showDeliveryForm && (
+              <AnimatedContainer delay={0.1}>
+
+                <section className="relative overflow-hidden rounded-3xl border border-cyan-400/15 bg-[#05070a] p-6 shadow-[0_0_50px_rgba(34,211,238,0.04)] md:p-8">
+
+                  <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-400/[0.05] blur-[100px]" />
+
+                  <div className="relative">
+
+                    {/* TITRE */}
+
+                    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+                      <div>
+
+                        <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-cyan-400">
+                          LIVRAISON
+                        </p>
+
+                        <h2 className="mt-2 text-2xl font-black">
+                          Informations de livraison
+                        </h2>
+
+                        <p className="mt-2 text-sm text-zinc-500">
+                          Ces informations sont
+                          obligatoires pour une commande
+                          avec livraison.
+                        </p>
+
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowDeliveryForm(
+                            false
+                          )
+                        }
+                        disabled={buying}
+                        className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-bold text-zinc-400 transition hover:border-red-400/30 hover:text-red-300"
+                      >
+                        Annuler
+                      </button>
+
+                    </div>
+
+                    {/* FORMULAIRE */}
+
+                    <div className="grid gap-6 md:grid-cols-2">
+
+                      {/* DESTINATAIRE */}
+
+                      <div>
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Nom du destinataire *
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            delivery.recipient_name
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "recipient_name",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Ex. Japhet Mberi"
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* TÉLÉPHONE */}
+
+                      <div>
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Téléphone *
+                        </label>
+
+                        <input
+                          type="tel"
+                          value={
+                            delivery.phone
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "phone",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Ex. 06 000 00 00"
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* VILLE */}
+
+                      <div>
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Ville *
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            delivery.city
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "city",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Ex. Pointe-Noire"
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* QUARTIER */}
+
+                      <div>
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Quartier *
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            delivery.neighborhood
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "neighborhood",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Ex. Centre-ville"
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* ADRESSE */}
+
+                      <div className="md:col-span-2">
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Adresse *
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            delivery.address
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "address",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Ex. Avenue Charles de Gaulle, maison 25"
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* DÉTAILS */}
+
+                      <div className="md:col-span-2">
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Détails supplémentaires
+                        </label>
+
+                        <textarea
+                          value={
+                            delivery.address_details
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "address_details",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Appartement, étage, repère..."
+                          disabled={buying}
+                          rows={3}
+                          className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* GPS */}
+
+                      <div className="md:col-span-2">
+
+                        <div className="flex flex-col gap-4 rounded-2xl border border-blue-400/10 bg-blue-500/[0.03] p-5 sm:flex-row sm:items-center sm:justify-between">
+
+                          <div>
+
+                            <p className="text-sm font-bold">
+                              📍 Position GPS
+                            </p>
+
+                            <p className="mt-1 text-xs text-zinc-600">
+                              La position permet de
+                              localiser précisément le
+                              lieu de livraison.
+                            </p>
+
+                            {delivery.latitude &&
+                            delivery.longitude ? (
+                              <p className="mt-2 text-xs text-emerald-400">
+                                Position récupérée ✓
+                              </p>
+                            ) : (
+                              <p className="mt-2 text-xs text-amber-400">
+                                Position non récupérée
+                              </p>
+                            )}
+
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={
+                              getCurrentLocation
+                            }
+                            disabled={buying}
+                            className="rounded-xl border border-blue-400/20 bg-blue-500/[0.06] px-4 py-3 text-xs font-black text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/[0.12]"
+                          >
+                            📍 Utiliser ma position
+                          </button>
+
+                        </div>
+
+                      </div>
+
+                      {/* DATE */}
+
+                      <div>
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Date de livraison *
+                        </label>
+
+                        <input
+                          type="date"
+                          value={
+                            delivery.delivery_date
+                          }
+                          min={
+                            new Date()
+                              .toISOString()
+                              .split("T")[0]
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "delivery_date",
+                              event.target.value
+                            )
+                          }
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* HEURE */}
+
+                      <div>
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Heure de livraison *
+                        </label>
+
+                        <input
+                          type="time"
+                          value={
+                            delivery.delivery_time
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "delivery_time",
+                              event.target.value
+                            )
+                          }
+                          disabled={buying}
+                          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                      {/* NOTE */}
+
+                      <div className="md:col-span-2">
+
+                        <label className="mb-2 block text-xs font-bold text-zinc-300">
+                          Note de livraison
+                        </label>
+
+                        <textarea
+                          value={
+                            delivery.delivery_note
+                          }
+                          onChange={(event) =>
+                            handleDeliveryChange(
+                              "delivery_note",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Ex. Appelez-moi avant d'arriver..."
+                          disabled={buying}
+                          rows={3}
+                          className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-cyan-400/50 focus:bg-cyan-400/[0.03]"
+                        />
+
+                      </div>
+
+                    </div>
+
+                    {/* CONFIRMATION */}
+
+                    <div className="mt-8 flex flex-col gap-5 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
+
+                      <div>
+
+                        <p className="text-xs text-zinc-600">
+                          Total de la commande
+                        </p>
+
+                        <p className="mt-1 text-2xl font-black text-cyan-300">
+                          {total.toLocaleString(
+                            "fr-FR"
+                          )}{" "}
+                          <span className="text-xs text-cyan-400">
+                            FCFA
+                          </span>
+                        </p>
+
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={
+                          orderWithDelivery
+                        }
+                        disabled={buying}
+                        className="rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 px-7 py-4 text-sm font-black text-white shadow-[0_0_30px_rgba(37,99,235,0.2)] transition hover:shadow-[0_0_45px_rgba(37,99,235,0.4)] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {buying
+                          ? "Création de la commande..."
+                          : "📦 Confirmer la commande"}
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                </section>
+
+              </AnimatedContainer>
+            )}
 
           </div>
         )}

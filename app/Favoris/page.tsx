@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 import AnimatedContainer from "@/app/components/AnimatedContainer";
+import Navbar from "@/app/components/Navbar";
+import { useAuth } from "@/app/context/AuthContext";
 
 interface Shop {
   id: number;
@@ -29,13 +32,6 @@ interface CartItem {
   quantity: number;
 }
 
-interface User {
-  id: number;
-  name: string;
-  email?: string;
-  role?: string;
-}
-
 interface Conversation {
   id: number;
   unread_count?: number;
@@ -48,12 +44,18 @@ const API_URL =
 export default function FavorisPage() {
   const router = useRouter();
 
+  // =====================================================
+  // AUTH GLOBAL
+  // =====================================================
+
+  const { user } = useAuth();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [cartCount, setCartCount] = useState(0);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
-  const [user, setUser] = useState<User | null>(null);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] =
+    useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -370,6 +372,10 @@ export default function FavorisPage() {
             productId
         )
     );
+
+    window.dispatchEvent(
+      new Event("favoritesUpdated")
+    );
   };
 
   /*
@@ -451,27 +457,9 @@ export default function FavorisPage() {
     const token =
       localStorage.getItem("token");
 
-    const storedUser =
-      localStorage.getItem("user");
-
     if (!token) {
       forceLogout();
       return;
-    }
-
-    if (storedUser) {
-      try {
-        setUser(
-          JSON.parse(
-            storedUser
-          )
-        );
-      } catch (err) {
-        console.error(
-          "Erreur utilisateur :",
-          err
-        );
-      }
     }
 
     loadFavorites();
@@ -491,7 +479,9 @@ export default function FavorisPage() {
   return (
     <main className="min-h-screen bg-[#020407] text-white">
 
-      {/* BACKGROUND */}
+      {/* =====================================================
+          BACKGROUND
+      ===================================================== */}
 
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
 
@@ -502,172 +492,10 @@ export default function FavorisPage() {
       </div>
 
       {/* =====================================================
-          NAVIGATION
+          NAVIGATION GLOBALE SHOPX
       ===================================================== */}
 
-      <header className="sticky top-0 z-50 border-b border-blue-400/10 bg-[#020407]/95 backdrop-blur-2xl">
-
-        <div className="mx-auto flex h-[70px] max-w-7xl items-center gap-4 px-4 md:px-8">
-
-          {/* LOGO */}
-
-          <Link
-            href="/"
-            className="group flex shrink-0 items-center gap-3"
-          >
-
-            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-blue-400/40 bg-blue-500/10 shadow-[0_0_25px_rgba(37,99,235,0.2)]">
-
-              <span className="text-lg font-black italic text-blue-400">
-                X
-              </span>
-
-            </div>
-
-            <div className="hidden sm:block">
-
-              <span className="block text-lg font-black tracking-wider">
-                SHOP
-                <span className="text-blue-400">
-                  X
-                </span>
-              </span>
-
-              <span className="block text-[8px] uppercase tracking-[0.35em] text-zinc-600">
-                Digital Store
-              </span>
-
-            </div>
-
-          </Link>
-
-          {/* NAVIGATION DESKTOP */}
-
-          <nav className="hidden flex-1 items-center justify-center gap-1 xl:flex">
-
-            <Link
-              href="/"
-              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-white/[0.03] hover:text-white"
-            >
-              Accueil
-            </Link>
-
-            <Link
-              href="/Produits"
-              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-white/[0.03] hover:text-white"
-            >
-              Produits
-            </Link>
-
-            <Link
-              href="/Boutique"
-              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-white/[0.03] hover:text-white"
-            >
-              Boutiques
-            </Link>
-
-            <Link
-              href="/Commandes"
-              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-white/[0.03] hover:text-white"
-            >
-              Commandes
-            </Link>
-
-            {/* FAVORIS */}
-
-            <Link
-              href="/Favoris"
-              className="relative rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-300 shadow-[0_0_20px_rgba(239,68,68,0.08)] transition hover:border-red-400/50 hover:bg-red-500/20"
-            >
-              <span className="mr-1">
-                ❤️
-              </span>
-
-              Favoris
-
-              {favoriteIds.length > 0 && (
-                <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-black text-white">
-                  {favoriteIds.length}
-                </span>
-              )}
-            </Link>
-
-            {/* MESSAGES */}
-
-            <Link
-              href="/Messageries"
-              className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-white/[0.03] hover:text-white"
-            >
-              Messages
-
-              {unreadMessages > 0 && (
-                <span className="ml-2 rounded-full bg-blue-500 px-2 py-0.5 text-[9px] text-white">
-                  {unreadMessages}
-                </span>
-              )}
-            </Link>
-
-          </nav>
-
-          {/* ACTIONS */}
-
-          <div className="ml-auto flex items-center gap-2">
-
-            {/* PANIER */}
-
-            <Link
-              href="/Panier"
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] transition hover:border-blue-400/30 hover:bg-blue-500/10"
-            >
-              🛒
-
-              {cartCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1 text-[9px] font-black text-white">
-                  {cartCount}
-                </span>
-              )}
-            </Link>
-
-            {/* NOTIFICATIONS */}
-
-            <Link
-              href="/Notifications"
-              className="relative hidden h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] transition hover:border-blue-400/30 hover:bg-blue-500/10 sm:flex"
-            >
-              🔔
-
-              {unreadNotifications > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1 text-[9px] font-black text-white">
-                  {unreadNotifications}
-                </span>
-              )}
-            </Link>
-
-            {/* COMPTE */}
-
-            <Link
-              href="/Compte"
-              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-blue-400/30 hover:bg-blue-500/10"
-            >
-
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-[10px] font-black text-black">
-                {user?.name
-                  ?.charAt(0)
-                  .toUpperCase() ||
-                  "?"}
-              </span>
-
-              <span className="hidden text-sm font-semibold md:block">
-                Mon compte
-              </span>
-
-            </Link>
-
-          </div>
-
-        </div>
-
-      </header>
+      <Navbar />
 
       {/* =====================================================
           CONTENU
@@ -675,7 +503,9 @@ export default function FavorisPage() {
 
       <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
 
-        {/* HERO */}
+        {/* =====================================================
+            HERO
+        ===================================================== */}
 
         <AnimatedContainer>
 
@@ -733,7 +563,9 @@ export default function FavorisPage() {
 
         </AnimatedContainer>
 
-        {/* ERREUR */}
+        {/* =====================================================
+            ERREUR
+        ===================================================== */}
 
         {error && (
 
@@ -747,7 +579,9 @@ export default function FavorisPage() {
 
         )}
 
-        {/* CHARGEMENT */}
+        {/* =====================================================
+            CHARGEMENT
+        ===================================================== */}
 
         {loading ? (
 
@@ -830,7 +664,9 @@ export default function FavorisPage() {
 
                     <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-red-400 to-transparent opacity-60" />
 
-                    {/* PRODUIT */}
+                    {/* =================================================
+                        PRODUIT
+                    ================================================= */}
 
                     <div className="relative border-b border-white/[0.06] p-6">
 
@@ -867,7 +703,9 @@ export default function FavorisPage() {
 
                     </div>
 
-                    {/* INFORMATIONS */}
+                    {/* =================================================
+                        INFORMATIONS
+                    ================================================= */}
 
                     <div className="p-6">
 
