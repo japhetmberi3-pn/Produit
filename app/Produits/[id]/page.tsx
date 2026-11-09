@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -28,8 +29,6 @@ interface Product {
   user?: User | null;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
 
 export default function ProduitDetailPage() {
   const params = useParams();

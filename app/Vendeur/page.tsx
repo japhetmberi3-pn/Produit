@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useState } from "react";
 import {
@@ -18,8 +19,6 @@ import { ParallaxProvider } from "react-scroll-parallax";
 import AnimatedContainer from "@/app/components/AnimatedContainer";
 import ParallaxBackground from "@/app/components/ParallaxBackground";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
 
 interface DashboardData {
   vendeur: {

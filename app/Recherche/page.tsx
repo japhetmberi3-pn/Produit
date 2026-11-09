@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -23,8 +24,6 @@ interface Product {
   } | null;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
 
 export default function RecherchePage() {
   const searchParams = useSearchParams();

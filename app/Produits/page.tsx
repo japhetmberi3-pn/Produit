@@ -1,9 +1,11 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import {
   FormEvent,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -93,9 +95,6 @@ interface ProductReviews {
  * =====================================================
  */
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000/api";
 
 /*
  * =====================================================
@@ -595,11 +594,19 @@ export default function ProduitsPage() {
     }
 
     try {
-      const parsedFavorites: number[] =
+      const parsedFavorites: unknown =
         JSON.parse(storedFavorites);
 
       if (Array.isArray(parsedFavorites)) {
-        setFavoriteIds(parsedFavorites);
+        const normalizedFavorites = Array.from(
+          new Set(
+            parsedFavorites
+              .map((id) => Number(id))
+              .filter((id) => Number.isInteger(id))
+          )
+        );
+
+        setFavoriteIds(normalizedFavorites);
       } else {
         setFavoriteIds([]);
       }
@@ -617,34 +624,54 @@ export default function ProduitsPage() {
     productId: number
   ) => {
     setFavoriteIds((previous) => {
+      const currentFavorites = Array.from(
+        new Set(
+          previous
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id))
+        )
+      );
       const alreadyFavorite =
-        previous.includes(productId);
+        currentFavorites.includes(productId);
 
       const updatedFavorites =
         alreadyFavorite
-          ? previous.filter(
+          ? currentFavorites.filter(
               (id) =>
                 id !== productId
             )
           : [
-              ...previous,
+              ...currentFavorites,
               productId,
             ];
 
+      return updatedFavorites;
+    });
+  };
+
+  const favoritesInitialized = useRef(false);
+
+  useEffect(() => {
+    if (!favoritesInitialized.current) {
+      return;
+    }
+
+    try {
       localStorage.setItem(
         "shopx_favorites",
-        JSON.stringify(
-          updatedFavorites
-        )
+        JSON.stringify(favoriteIds)
       );
 
       window.dispatchEvent(
         new Event("favoritesUpdated")
       );
-
-      return updatedFavorites;
-    });
-  };
+    } catch (err) {
+      console.error(
+        "Erreur sauvegarde favoris :",
+        err
+      );
+    }
+  }, [favoriteIds]);
 
   /*
    * =====================================================
@@ -662,6 +689,7 @@ export default function ProduitsPage() {
     }
 
     loadFavorites();
+    favoritesInitialized.current = true;
 
     fetchProducts();
     fetchCart();

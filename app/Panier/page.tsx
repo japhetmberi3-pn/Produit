@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -90,9 +91,6 @@ export default function PanierPage() {
       delivery_time: "",
     });
 
-  const API_URL =
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://127.0.0.1:8000/api";
 
   // =========================
   // URL PHOTO DE PROFIL

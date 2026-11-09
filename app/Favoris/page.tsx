@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -37,9 +38,6 @@ interface Conversation {
   unread_count?: number;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000/api";
 
 export default function FavorisPage() {
   const router = useRouter();
@@ -88,12 +86,25 @@ export default function FavorisPage() {
     }
 
     try {
-      const parsed: number[] =
+      const parsed: unknown =
         JSON.parse(storedFavorites);
 
-      setFavoriteIds(parsed);
+      if (!Array.isArray(parsed)) {
+        setFavoriteIds([]);
+        return [];
+      }
 
-      return parsed;
+      const normalized = Array.from(
+        new Set(
+          parsed
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id))
+        )
+      );
+
+      setFavoriteIds(normalized);
+
+      return normalized;
     } catch (err) {
       console.error(
         "Erreur favoris :",
@@ -160,9 +171,19 @@ export default function FavorisPage() {
 
       if (storedFavorites) {
         try {
-          ids = JSON.parse(
+          const parsed: unknown = JSON.parse(
             storedFavorites
           );
+
+          if (Array.isArray(parsed)) {
+            ids = Array.from(
+              new Set(
+                parsed
+                  .map((id) => Number(id))
+                  .filter((id) => Number.isInteger(id))
+              )
+            );
+          }
         } catch {
           ids = [];
         }
@@ -351,31 +372,28 @@ export default function FavorisPage() {
   const removeFavorite = (
     productId: number
   ) => {
-    const updated =
-      favoriteIds.filter(
-        (id) =>
-          id !== productId
+    setFavoriteIds((previous) => {
+      const updated = previous.filter(
+        (id) => id !== productId
       );
 
-    localStorage.setItem(
-      "shopx_favorites",
-      JSON.stringify(updated)
-    );
+      localStorage.setItem(
+        "shopx_favorites",
+        JSON.stringify(updated)
+      );
 
-    setFavoriteIds(updated);
-
-    setProducts(
-      (previous) =>
-        previous.filter(
-          (product) =>
-            product.id !==
-            productId
+      setProducts((currentProducts) =>
+        currentProducts.filter(
+          (product) => product.id !== productId
         )
-    );
+      );
 
-    window.dispatchEvent(
-      new Event("favoritesUpdated")
-    );
+      window.dispatchEvent(
+        new Event("favoritesUpdated")
+      );
+
+      return updated;
+    });
   };
 
   /*

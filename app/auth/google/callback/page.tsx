@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -74,7 +75,7 @@ export default function GoogleCallbackPage() {
                 // ==========================================
 
                 const response = await fetch(
-                    "http://127.0.0.1:8000/api/user",
+                    `${API_URL}/user`,
                     {
                         method: "GET",
                         headers: {

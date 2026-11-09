@@ -118,6 +118,46 @@ describe("ProductsPage", () => {
         ).toBeInTheDocument();
     });
 
+    it("ajoute puis retire un produit des favoris", async () => {
+        mockFetch
+            .mockResolvedValueOnce(productsResponse())
+            .mockResolvedValueOnce(notificationsResponse());
+
+        const user = userEvent.setup();
+
+        render(<ProductsPage />);
+
+        const addButton = await screen.findByRole("button", {
+            name: "Ajouter aux favoris",
+        });
+
+        await user.click(addButton);
+
+        const removeButton = await screen.findByRole("button", {
+            name: "Retirer des favoris",
+        });
+
+        expect(window.localStorage.setItem).toHaveBeenLastCalledWith(
+            "shopx_favorites",
+            JSON.stringify([1])
+        );
+
+        await user.click(removeButton);
+
+        await waitFor(() => {
+            expect(
+                screen.getByRole("button", {
+                    name: "Ajouter aux favoris",
+                })
+            ).toBeInTheDocument();
+        });
+
+        expect(window.localStorage.setItem).toHaveBeenLastCalledWith(
+            "shopx_favorites",
+            JSON.stringify([])
+        );
+    });
+
     it("affiche le message lorsqu'il n'y a aucun produit", async () => {
         mockFetch
             .mockResolvedValueOnce(

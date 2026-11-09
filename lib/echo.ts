@@ -1,3 +1,4 @@
+import { API_URL } from "@/lib/config";
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
 
@@ -27,7 +28,7 @@ const echo =
         forceTLS: false,
         enabledTransports: ["ws", "wss"],
 
-        authEndpoint: "http://127.0.0.1:8000/api/broadcasting/auth",
+        authEndpoint: `${API_URL}/broadcasting/auth`,
 
         auth: {
           headers: {

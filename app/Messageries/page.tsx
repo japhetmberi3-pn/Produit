@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import {
   useEffect,
@@ -33,17 +34,19 @@ interface Message {
 
 interface Conversation {
   id: number;
-  user_id: number;
-  admin_id: number;
+  user_id?: number;
+  admin_id?: number;
+
   user?: User;
   admin?: User;
+  seller?: User;
+
+  participants?: User[];
+
   messages?: Message[];
   unread_count?: number;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000/api";
 
 export default function MessageriesPage() {
   /*
@@ -84,6 +87,19 @@ export default function MessageriesPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [admins, setAdmins] = useState<User[]>([]);
+
+  /*
+   * ============================================================
+   * NOUVEAU
+   * Même système de conversation pour les vendeurs et clients
+   * ============================================================
+   */
+
+  const [sellers, setSellers] = useState<User[]>([]);
+
+  const [clients, setClients] = useState<User[]>([]);
+
+  const [contacts, setContacts] = useState<User[]>([]);
 
   const [showAdminList, setShowAdminList] =
     useState(false);
@@ -169,7 +185,7 @@ export default function MessageriesPage() {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      return;
+      return [];
     }
 
     try {
@@ -195,22 +211,202 @@ export default function MessageriesPage() {
         ? data
         : [];
 
-      setAdmins(
+      const filteredAdmins =
         adminUsers.filter(
           (admin) => admin.id !== currentUserId
-        )
-      );
+        );
+
+      setAdmins(filteredAdmins);
+
+      return filteredAdmins;
     } catch (error) {
       console.error(
         "Erreur récupération administrateurs :",
         error
       );
+
+      return [];
     }
   };
 
+  /*
+   * ============================================================
+   * VENDEURS
+   * ============================================================
+   */
+
+  const fetchSellers = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return [];
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/sellers`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Erreur récupération vendeurs : ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      const sellerUsers: User[] = Array.isArray(data)
+        ? data
+        : [];
+
+      const filteredSellers =
+        sellerUsers.filter(
+          (seller) => seller.id !== currentUserId
+        );
+
+      setSellers(filteredSellers);
+
+      return filteredSellers;
+    } catch (error) {
+      console.error(
+        "Erreur récupération vendeurs :",
+        error
+      );
+
+      return [];
+    }
+  };
+
+  /*
+   * ============================================================
+   * CLIENTS
+   * ============================================================
+   */
+
+  const fetchClients = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return [];
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/clients`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Erreur récupération clients : ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      const clientUsers: User[] = Array.isArray(data)
+        ? data
+        : [];
+
+      const filteredClients =
+        clientUsers.filter(
+          (client) => client.id !== currentUserId
+        );
+
+      setClients(filteredClients);
+
+      return filteredClients;
+    } catch (error) {
+      console.error(
+        "Erreur récupération clients :",
+        error
+      );
+
+      return [];
+    }
+  };
+
+  /*
+   * ============================================================
+   * NOUVELLE CONVERSATION
+   * ============================================================
+   */
+
   const handleNewConversation = async () => {
     setShowAdminList(true);
-    await fetchAdmins();
+
+    /*
+     * CLIENT
+     * Client → Admin
+     * Client → Vendeur
+     */
+    if (currentUserRole === "client") {
+      const [adminUsers, sellerUsers] =
+        await Promise.all([
+          fetchAdmins(),
+          fetchSellers(),
+        ]);
+
+      setContacts([
+        ...adminUsers,
+        ...sellerUsers,
+      ]);
+
+      return;
+    }
+
+    /*
+     * VENDEUR
+     * Vendeur → Admin
+     * Vendeur → Client
+     */
+    if (currentUserRole === "vendeur") {
+      const [adminUsers, clientUsers] =
+        await Promise.all([
+          fetchAdmins(),
+          fetchClients(),
+        ]);
+
+      setContacts([
+        ...adminUsers,
+        ...clientUsers,
+      ]);
+
+      return;
+    }
+
+    /*
+     * ADMIN
+     * Admin → Client
+     * Admin → Vendeur
+     */
+    if (currentUserRole === "admin") {
+      const [sellerUsers, clientUsers] =
+        await Promise.all([
+          fetchSellers(),
+          fetchClients(),
+        ]);
+
+      setContacts([
+        ...sellerUsers,
+        ...clientUsers,
+      ]);
+
+      return;
+    }
+
+    setContacts([]);
   };
 
   /*
@@ -220,7 +416,7 @@ export default function MessageriesPage() {
    */
 
   const handleCreateConversation = async (
-    admin: User
+    contact: User
   ) => {
     const token = localStorage.getItem("token");
 
@@ -240,8 +436,13 @@ export default function MessageriesPage() {
             Accept: "application/json",
             "Content-Type": "application/json",
           },
+
+          /*
+           * API générique :
+           * admin / vendeur / client
+           */
           body: JSON.stringify({
-            admin_id: admin.id,
+            participant_id: contact.id,
           }),
         }
       );
@@ -308,20 +509,23 @@ export default function MessageriesPage() {
           completeConversation
         );
       } else {
-        const conversationWithAdmin: Conversation = {
+        const conversationWithContact: Conversation = {
           ...newConversation,
-          admin,
+          participants: [
+            ...(user ? [user as User] : []),
+            contact,
+          ],
         };
 
         setConversations(
           (currentConversations) => [
-            conversationWithAdmin,
+            conversationWithContact,
             ...currentConversations,
           ]
         );
 
         setSelectedConversation(
-          conversationWithAdmin
+          conversationWithContact
         );
       }
 
@@ -943,14 +1147,65 @@ export default function MessageriesPage() {
     );
   };
 
+  /*
+   * ============================================================
+   * INTERLOCUTEUR
+   *
+   * On utilise maintenant participants.
+   *
+   * Cela permet :
+   *
+   * CLIENT  ↔ ADMIN
+   * CLIENT  ↔ VENDEUR
+   * VENDEUR ↔ ADMIN
+   *
+   * sans changer le design.
+   * ============================================================
+   */
+
   const getConversationUser = (
     conversation: Conversation
   ): User | undefined => {
-    if (currentUserId === conversation.user_id) {
+    /*
+     * Nouveau système
+     */
+    if (conversation.participants?.length) {
+      const otherParticipant =
+        conversation.participants.find(
+          (participant) =>
+            participant.id !== currentUserId
+        );
+
+      if (otherParticipant) {
+        return otherParticipant;
+      }
+    }
+
+    /*
+     * Compatibilité avec les anciennes conversations
+     */
+    if (
+      conversation.user &&
+      conversation.user.id !== currentUserId
+    ) {
+      return conversation.user;
+    }
+
+    if (
+      conversation.admin &&
+      conversation.admin.id !== currentUserId
+    ) {
       return conversation.admin;
     }
 
-    return conversation.user;
+    if (
+      conversation.seller &&
+      conversation.seller.id !== currentUserId
+    ) {
+      return conversation.seller;
+    }
+
+    return undefined;
   };
 
   const getUnreadCount = (
@@ -959,12 +1214,18 @@ export default function MessageriesPage() {
     return conversation.unread_count ?? 0;
   };
 
+  /*
+   * ============================================================
+   * RECHERCHE
+   *
+   * Avant : uniquement Admin
+   *
+   * Maintenant : tous les interlocuteurs.
+   * ============================================================
+   */
+
   const filteredConversations =
     conversations.filter((conversation) => {
-      if (!isAdmin) {
-        return true;
-      }
-
       const search = searchTerm
         .trim()
         .toLowerCase();
@@ -973,11 +1234,26 @@ export default function MessageriesPage() {
         return true;
       }
 
+      const otherUser =
+        getConversationUser(conversation);
+
       const userName =
-        conversation.user?.name
+        otherUser?.name
           ?.toLowerCase() ?? "";
 
-      return userName.includes(search);
+      const userEmail =
+        otherUser?.email
+          ?.toLowerCase() ?? "";
+
+      const userRole =
+        otherUser?.role
+          ?.toLowerCase() ?? "";
+
+      return (
+        userName.includes(search) ||
+        userEmail.includes(search) ||
+        userRole.includes(search)
+      );
     });
 
   const totalUnread = conversations.reduce(
@@ -1192,29 +1468,27 @@ export default function MessageriesPage() {
 
               </div>
 
-              {/* RECHERCHE ADMIN */}
+              {/* RECHERCHE */}
 
-              {isAdmin && (
-                <div className="relative mb-3">
+              <div className="relative mb-3">
 
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600">
-                    ⌕
-                  </span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600">
+                  ⌕
+                </span>
 
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(event) =>
-                      setSearchTerm(
-                        event.target.value
-                      )
-                    }
-                    placeholder="Rechercher un utilisateur..."
-                    className="w-full rounded-xl border border-white/10 bg-black/60 py-3 pl-9 pr-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-400/40 focus:bg-cyan-400/[0.03] focus:shadow-[0_0_20px_rgba(34,211,238,0.08)]"
-                  />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) =>
+                    setSearchTerm(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Rechercher un utilisateur..."
+                  className="w-full rounded-xl border border-white/10 bg-black/60 py-3 pl-9 pr-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-400/40 focus:bg-cyan-400/[0.03] focus:shadow-[0_0_20px_rgba(34,211,238,0.08)]"
+                />
 
-                </div>
-              )}
+              </div>
 
               {/* NOUVELLE CONVERSATION */}
 
@@ -1234,7 +1508,7 @@ export default function MessageriesPage() {
               </button>
             </div>
 
-            {/* CHOIX ADMIN */}
+            {/* CHOIX CONTACT */}
 
             {showAdminList && (
               <div className="border-b border-white/10 bg-gradient-to-b from-violet-500/[0.06] to-transparent p-4">
@@ -1247,7 +1521,7 @@ export default function MessageriesPage() {
                     </p>
 
                     <p className="mt-1 text-xs text-zinc-500">
-                      Sélectionnez un administrateur
+                      Sélectionnez un interlocuteur
                     </p>
                   </div>
 
@@ -1262,43 +1536,43 @@ export default function MessageriesPage() {
                   </button>
                 </div>
 
-                {admins.length === 0 ? (
+                {contacts.length === 0 ? (
                   <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 text-center">
                     <p className="text-sm text-zinc-500">
-                      Aucun administrateur disponible.
+                      Aucun utilisateur disponible.
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {admins.map((admin) => (
+                    {contacts.map((contact) => (
                       <button
-                        key={admin.id}
+                        key={`${contact.role}-${contact.id}`}
                         type="button"
                         disabled={
                           creatingConversation
                         }
                         onClick={() =>
                           handleCreateConversation(
-                            admin
+                            contact
                           )
                         }
                         className="group flex w-full items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.06] disabled:opacity-50"
                       >
 
-                        {/* AVATAR ADMIN */}
+                        {/* AVATAR */}
 
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-cyan-400/20 to-violet-500/20 font-black text-cyan-300 ring-1 ring-cyan-400/20">
 
-                          {admin.profile_photo_url ? (
+                          {contact.profile_photo_url ? (
                             <img
                               src={
-                                admin.profile_photo_url
+                                contact.profile_photo_url
                               }
-                              alt={admin.name}
+                              alt={contact.name}
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            admin.name
+                            contact.name
                               .charAt(0)
                               .toUpperCase()
                           )}
@@ -1307,11 +1581,17 @@ export default function MessageriesPage() {
 
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-white">
-                            {admin.name}
+                            {contact.name}
                           </p>
 
                           <p className="text-[11px] text-zinc-500">
-                            Administrateur ShopX
+                            {contact.role ===
+                            "admin"
+                              ? "Administrateur ShopX"
+                              : contact.role ===
+                                "vendeur"
+                              ? "Vendeur ShopX"
+                              : "Client ShopX"}
                           </p>
                         </div>
 
@@ -1347,8 +1627,7 @@ export default function MessageriesPage() {
                   </div>
 
                   <p className="text-sm font-semibold text-zinc-400">
-                    {isAdmin &&
-                    searchTerm.trim()
+                    {searchTerm.trim()
                       ? "Aucun utilisateur trouvé."
                       : "Aucune conversation."}
                   </p>
@@ -1996,9 +2275,11 @@ export default function MessageriesPage() {
 
                               </div>
 
-                              {(isMine ||
-                                selectedConversation.admin_id ===
-                                  currentUserId) && (
+                              {(
+                                isMine ||
+                                currentUserRole ===
+                                  "admin"
+                              ) && (
                                 <button
                                   type="button"
                                   onClick={() =>

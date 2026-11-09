@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/config";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -7,9 +8,6 @@ import Cropper, { Area } from "react-easy-crop";
 import AnimatedContainer from "@/app/components/AnimatedContainer";
 import { useAuth } from "@/app/context/AuthContext";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000/api";
 
 export default function ComptePage() {
   const router = useRouter();
