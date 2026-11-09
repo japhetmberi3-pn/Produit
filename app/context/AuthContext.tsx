@@ -2,11 +2,17 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
-  useState,
+  useMemo,
   type ReactNode,
 } from "react";
+
+import {
+  notifyLocalStorageChange,
+  useLocalStorageItem,
+} from "@/lib/useLocalStorage";
 
 export interface User {
   id: number;
@@ -29,78 +35,66 @@ const AuthContext = createContext<AuthContextType | undefined>(
   undefined
 );
 
+const parseUser = (raw: string | null): User | null => {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    return parsed?.id ? (parsed as User) : null;
+  } catch {
+    return null;
+  }
+};
+
 export function AuthProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [user, setUserState] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  // localStorage est la source de vérité : pas de copie dans un useState,
+  // donc pas de setState dans un useEffect, et synchronisation entre onglets.
+  const token = useLocalStorageItem("token");
+  const rawUser = useLocalStorageItem("user");
+  const user = useMemo(() => parseUser(rawUser), [rawUser]);
 
+  // Nettoie un "user" corrompu (aucun setState ici).
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    if (storedToken) {
-      setToken(storedToken);
+    if (rawUser && !user) {
+      console.error("Utilisateur invalide dans localStorage, suppression.");
+      localStorage.removeItem("user");
     }
-
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-
-        if (parsedUser?.id) {
-          setUserState(parsedUser);
-        }
-      } catch (error) {
-        console.error(
-          "Erreur lors de la récupération de l'utilisateur :",
-          error
-        );
-
-        localStorage.removeItem("user");
-      }
-    }
-  }, []);
+  }, [rawUser, user]);
 
   /**
-   * Met à jour :
-   * - React
-   * - localStorage
-   *
-   * Tous les composants utilisant useAuth()
-   * sont donc immédiatement actualisés.
+   * Met à jour localStorage puis notifie :
+   * tous les composants utilisant useAuth() sont immédiatement actualisés.
    */
-  const setUser = (updatedUser: User | null) => {
-    setUserState(updatedUser);
-
+  const setUser = useCallback((updatedUser: User | null) => {
     if (updatedUser) {
-      localStorage.setItem(
-        "user",
-        JSON.stringify(updatedUser)
-      );
+      localStorage.setItem("user", JSON.stringify(updatedUser));
     } else {
       localStorage.removeItem("user");
     }
-  };
 
-  const logout = () => {
+    notifyLocalStorageChange();
+  }, []);
+
+  // useCallback : référence stable, utilisable dans les dépendances de useEffect.
+  const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
-    setUserState(null);
-    setToken(null);
-  };
+    notifyLocalStorageChange();
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, token, setUser, logout }),
+    [user, token, setUser, logout]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        setUser,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,13 +1,32 @@
 "use client";
-import { API_URL } from "@/lib/config";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 
+import AuthModal, { OPEN_AUTH_EVENT } from "@/app/components/auth/AuthModal";
+import type { AuthMode } from "@/app/components/auth/AuthForm";
+import {
+  BellIcon,
+  CartIcon,
+  CloseIcon,
+  GridIcon,
+  HeartIcon,
+  HomeIcon,
+  LogoutIcon,
+  MenuIcon,
+  MessageIcon,
+  MoonIcon,
+  PackageIcon,
+  SearchIcon,
+  StoreIcon,
+  SunIcon,
+  UserIcon,
+} from "@/app/components/icons";
 import { useAuth } from "@/app/context/AuthContext";
 import { useTheme } from "@/app/context/ThemeContext";
-
+import { apiFetch, UnauthorizedError } from "@/lib/api";
+import { CART_UPDATED_EVENT, useFavorites } from "@/lib/shop";
 
 interface Conversation {
   id: number;
@@ -19,699 +38,420 @@ interface CartItem {
   quantity: number;
 }
 
+const NAV_LINKS = [
+  { href: "/", label: "Accueil", icon: HomeIcon },
+  { href: "/Produits", label: "Produits", icon: GridIcon },
+  { href: "/Boutique", label: "Boutiques", icon: StoreIcon },
+  { href: "/Commandes", label: "Mes commandes", icon: PackageIcon },
+  { href: "/Messageries", label: "Messages", icon: MessageIcon },
+] as const;
+
+function CountBadge({ count, tone = "accent" }: { count: number; tone?: "accent" | "brand" }) {
+  if (count <= 0) return null;
+
+  return (
+    <span
+      className={`absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold ring-2 ring-surface ${
+        tone === "accent" ? "bg-accent text-on-accent" : "bg-brand text-on-brand"
+      }`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+function IconLink({
+  href,
+  label,
+  count,
+  children,
+  className = "",
+  tone,
+}: {
+  href: string;
+  label: string;
+  count: number;
+  children: ReactNode;
+  className?: string;
+  tone?: "accent" | "brand";
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={count > 0 ? `${label} (${count})` : label}
+      title={label}
+      className={`relative flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition hover:bg-surface-2 hover:text-ink ${className}`}
+    >
+      {children}
+      <CountBadge count={count} tone={tone} />
+    </Link>
+  );
+}
+
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
 
   const { user, token, logout } = useAuth();
-  const { lightOn, toggleLight } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
+  const { count: favoriteCount } = useFavorites();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
 
-  const [unreadNotifications, setUnreadNotifications] =
-    useState(0);
+  const [counts, setCounts] = useState({ notifications: 0, messages: 0, cart: 0 });
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [unreadMessages, setUnreadMessages] =
-    useState(0);
+  // Déconnecté : tous les compteurs valent 0.
+  const unreadNotifications = token ? counts.notifications : 0;
+  const unreadMessages = token ? counts.messages : 0;
+  const cartCount = token ? counts.cart : 0;
 
-  const [cartCount, setCartCount] =
-    useState(0);
-
-  const [favoriteCount, setFavoriteCount] =
-    useState(0);
-
-  /*
-   * =====================================================
-   * FAVORIS
-   * =====================================================
-   */
-
-  const updateFavoriteCount = () => {
-    try {
-      const storedFavorites =
-        localStorage.getItem("shopx_favorites");
-
-      if (!storedFavorites) {
-        setFavoriteCount(0);
-        return;
-      }
-
-      const parsed: number[] =
-        JSON.parse(storedFavorites);
-
-      setFavoriteCount(
-        Array.isArray(parsed)
-          ? parsed.length
-          : 0
-      );
-    } catch {
-      setFavoriteCount(0);
-    }
-  };
-
-  /*
-   * =====================================================
-   * ÉCOUTER LES MODIFICATIONS DES FAVORIS
-   * =====================================================
-   */
+  /* ===================== ÉVÉNEMENTS GLOBAUX ===================== */
 
   useEffect(() => {
-    updateFavoriteCount();
-
-    const handleStorage = () => {
-      updateFavoriteCount();
+    const onCartUpdated = () => setRefreshKey((key) => key + 1);
+    const onOpenAuth = (event: Event) => {
+      setAuthMode((event as CustomEvent<AuthMode>).detail ?? "login");
     };
 
-    const handleFavoritesUpdated = () => {
-      updateFavoriteCount();
-    };
-
-    window.addEventListener(
-      "storage",
-      handleStorage
-    );
-
-    window.addEventListener(
-      "favoritesUpdated",
-      handleFavoritesUpdated
-    );
+    window.addEventListener(CART_UPDATED_EVENT, onCartUpdated);
+    window.addEventListener(OPEN_AUTH_EVENT, onOpenAuth);
 
     return () => {
-      window.removeEventListener(
-        "storage",
-        handleStorage
-      );
-
-      window.removeEventListener(
-        "favoritesUpdated",
-        handleFavoritesUpdated
-      );
+      window.removeEventListener(CART_UPDATED_EVENT, onCartUpdated);
+      window.removeEventListener(OPEN_AUTH_EVENT, onOpenAuth);
     };
   }, []);
 
-  /*
-   * =====================================================
-   * DONNÉES NAVIGATION
-   * =====================================================
-   */
+  /* ===================== COMPTEURS ===================== */
 
   useEffect(() => {
-    if (!token) {
-      setUnreadNotifications(0);
-      setUnreadMessages(0);
-      setCartCount(0);
-      return;
-    }
+    if (!token) return;
 
-    const fetchNavigationData = async () => {
-      /*
-       * NOTIFICATIONS
-       */
+    // Annule les requêtes si la page change avant la réponse.
+    const controller = new AbortController();
+    const { signal } = controller;
 
-      try {
-        const response = await fetch(
-          `${API_URL}/notifications`,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+    const load = async () => {
+      const [notifications, conversations, cart] = await Promise.allSettled([
+        apiFetch<{ unread_count?: number }>("/notifications", { signal }),
+        apiFetch<Conversation[]>("/conversations", { signal }),
+        apiFetch<CartItem[] | { items?: CartItem[] }>("/cart", { signal }),
+      ]);
 
-        if (response.ok) {
-          const data = await response.json();
+      if (signal.aborted) return;
 
-          setUnreadNotifications(
-            Number(data.unread_count || 0)
+      const results = [notifications, conversations, cart];
+
+      if (results.some((r) => r.status === "rejected" && r.reason instanceof UnauthorizedError)) {
+        logout();
+        return;
+      }
+
+      setCounts((previous) => {
+        const next = { ...previous };
+
+        if (notifications.status === "fulfilled") {
+          next.notifications = Number(notifications.value?.unread_count || 0);
+        }
+
+        if (conversations.status === "fulfilled" && Array.isArray(conversations.value)) {
+          next.messages = conversations.value.reduce(
+            (sum, conversation) => sum + Number(conversation.unread_count || 0),
+            0
           );
         }
-      } catch (error) {
-        console.error(
-          "Erreur notifications :",
-          error
-        );
-      }
 
-      /*
-       * MESSAGES
-       */
-
-      try {
-        const response = await fetch(
-          `${API_URL}/conversations`,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const data: Conversation[] =
-            await response.json();
-
-          const total =
-            data.reduce(
-              (sum, conversation) =>
-                sum +
-                Number(
-                  conversation.unread_count || 0
-                ),
-              0
-            );
-
-          setUnreadMessages(total);
+        if (cart.status === "fulfilled") {
+          const data = cart.value;
+          const items = Array.isArray(data) ? data : data?.items || [];
+          next.cart = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
         }
-      } catch (error) {
-        console.error(
-          "Erreur messages :",
-          error
-        );
-      }
 
-      /*
-       * PANIER
-       */
+        return next;
+      });
 
-      try {
-        const response = await fetch(
-          `${API_URL}/cart`,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-
-          const items: CartItem[] =
-            Array.isArray(data)
-              ? data
-              : data.items || [];
-
-          const total =
-            items.reduce(
-              (sum, item) =>
-                sum +
-                Number(item.quantity || 0),
-              0
-            );
-
-          setCartCount(total);
+      results.forEach((result) => {
+        if (result.status === "rejected" && !signal.aborted) {
+          console.error("Erreur navigation :", result.reason);
         }
-      } catch (error) {
-        console.error(
-          "Erreur panier :",
-          error
-        );
-      }
+      });
     };
 
-    fetchNavigationData();
-  }, [token, pathname]);
+    load();
 
-  /*
-   * =====================================================
-   * LIEN ACTIF
-   * =====================================================
-   */
+    return () => controller.abort();
+  }, [token, pathname, refreshKey, logout]);
 
-  const isActive = (href: string) => {
-    if (href === "/") {
-      return pathname === "/";
-    }
+  /* ===================== ACTIONS ===================== */
 
-    return pathname.startsWith(href);
+  const closeAuth = useCallback(() => setAuthMode(null), []);
+
+  const handleAuthSuccess = useCallback(() => {
+    setAuthMode(null);
+    router.push("/Produits");
+  }, [router]);
+
+  const handleSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const query = search.trim();
+
+    setMenuOpen(false);
+    router.push(query ? `/Produits?search=${encodeURIComponent(query)}` : "/Produits");
   };
-
-  /*
-   * =====================================================
-   * DÉCONNEXION
-   * =====================================================
-   */
 
   const handleLogout = () => {
     logout();
     setMenuOpen(false);
-    router.push("/Connexion");
+    router.push("/");
   };
 
-  /*
-   * =====================================================
-   * FERMER MENU MOBILE
-   * =====================================================
-   */
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname?.startsWith(href);
 
-  const closeMobileMenu = () => {
-    setMenuOpen(false);
-  };
+  const firstName = user?.name?.split(" ")[0];
+  const isSeller = user?.role === "vendeur" || user?.role === "seller";
 
-  /*
-   * =====================================================
-   * BADGE
-   * =====================================================
-   */
-
-  const Badge = ({
-    count,
-  }: {
-    count: number;
-  }) => {
-    if (count <= 0) {
-      return null;
-    }
-
-    return (
-      <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1 text-[9px] font-black text-white">
-        {count > 99 ? "99+" : count}
-      </span>
-    );
-  };
-
-  /*
-   * =====================================================
-   * STYLE DES LIENS
-   *
-   * IMPORTANT :
-   * La Navbar reste TOUJOURS sombre.
-   * lightOn ne sert PAS à éclaircir la Navbar.
-   * =====================================================
-   */
-
-  const desktopLinkClass = (
-    href: string
-  ) => {
-    const active = isActive(href);
-
-    if (active) {
-      return "rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 py-2.5 text-sm font-bold text-blue-300 transition";
-    }
-
-    return "rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:bg-white/[0.03] hover:text-white";
-  };
-
-  /*
-   * =====================================================
-   * NAVIGATION
-   * =====================================================
-   */
+  const searchForm = (id: string) => (
+    <form onSubmit={handleSearch} role="search" className="relative w-full">
+      <label htmlFor={id} className="sr-only">
+        Rechercher un produit
+      </label>
+      <input
+        id={id}
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Rechercher un produit, une marque..."
+        className="h-11 w-full rounded-full border border-line bg-surface-2 pl-4 pr-12 text-sm text-ink outline-none transition placeholder:text-muted focus:border-brand focus:bg-surface focus:ring-4 focus:ring-brand/15"
+      />
+      <button
+        type="submit"
+        aria-label="Lancer la recherche"
+        className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-brand text-on-brand transition hover:bg-brand-hover"
+      >
+        <SearchIcon size={17} />
+      </button>
+    </form>
+  );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-blue-400/10 bg-[#020407]/95 backdrop-blur-2xl">
-
-      <div className="mx-auto flex h-[70px] max-w-7xl items-center gap-4 px-4 md:px-8">
-
-        {/* =================================================
-            LOGO
-        ================================================= */}
-
-        <Link
-          href="/"
-          onClick={closeMobileMenu}
-          className="group flex shrink-0 items-center gap-3"
-        >
-          <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-blue-400/40 bg-blue-500/10 shadow-[0_0_25px_rgba(37,99,235,0.2)]">
-
-            <span className="text-lg font-black italic text-blue-400">
-              X
-            </span>
-
-            <span className="pointer-events-none absolute inset-0 rounded-xl bg-blue-400/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-
-          </div>
-
-          <div className="hidden sm:block">
-
-            <span className="block text-lg font-black tracking-wider text-white">
-              SHOP
-              <span className="text-blue-400">
-                X
-              </span>
-            </span>
-
-            <span className="block text-[8px] uppercase tracking-[0.35em] text-zinc-600">
-              Digital Store
-            </span>
-
-          </div>
-        </Link>
-
-        {/* =================================================
-            NAVIGATION DESKTOP
-        ================================================= */}
-
-        <nav className="hidden flex-1 items-center justify-center gap-1 xl:flex">
+    <>
+      <header className="sticky top-0 z-50 border-b border-line bg-surface/95 backdrop-blur-xl">
+        {/* ===================== LIGNE PRINCIPALE ===================== */}
+        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:gap-6 md:px-6">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+            aria-expanded={menuOpen}
+            className="-ml-2 flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition hover:bg-surface-2 lg:hidden"
+          >
+            {menuOpen ? <CloseIcon /> : <MenuIcon />}
+          </button>
 
           <Link
             href="/"
-            className={desktopLinkClass("/")}
+            onClick={() => setMenuOpen(false)}
+            className="flex shrink-0 items-center gap-2"
+            aria-label="ShopX — accueil"
           >
-            Accueil
-          </Link>
-
-          <Link
-            href="/Produits"
-            className={desktopLinkClass(
-              "/Produits"
-            )}
-          >
-            Produits
-          </Link>
-
-          <Link
-            href="/Boutique"
-            className={desktopLinkClass(
-              "/Boutique"
-            )}
-          >
-            Boutiques
-          </Link>
-
-          <Link
-            href="/Commandes"
-            className={desktopLinkClass(
-              "/Commandes"
-            )}
-          >
-            Commandes
-          </Link>
-
-          {/* FAVORIS */}
-
-          <Link
-            href="/Favoris"
-            className={`relative rounded-xl border px-4 py-2.5 text-sm font-bold transition ${
-              isActive("/Favoris")
-                ? "border-red-400/40 bg-red-500/15 text-red-400"
-                : "border-red-400/20 bg-red-500/[0.05] text-red-300 hover:border-red-400/40 hover:bg-red-500/10"
-            }`}
-          >
-            <span className="mr-1">
-              ❤️
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-lg font-black text-on-brand">
+              X
             </span>
-
-            Favoris
-
-            {favoriteCount > 0 && (
-              <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-black text-white">
-                {favoriteCount}
-              </span>
-            )}
+            <span className="hidden text-xl font-extrabold tracking-tight text-ink sm:block">
+              Shop<span className="text-brand">X</span>
+            </span>
           </Link>
 
-          {/* MESSAGES */}
+          <div className="hidden max-w-2xl flex-1 md:block">{searchForm("navbar-search")}</div>
 
-          <Link
-            href="/Messageries"
-            className={desktopLinkClass(
-              "/Messageries"
+          <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={isDark ? "Passer en mode clair" : "Passer en mode sombre"}
+              title={isDark ? "Mode clair" : "Mode sombre"}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition hover:bg-surface-2 hover:text-ink"
+            >
+              {isDark ? <SunIcon /> : <MoonIcon />}
+            </button>
+
+            <IconLink href="/Favoris" label="Favoris" count={favoriteCount} className="hidden sm:flex">
+              <HeartIcon />
+            </IconLink>
+
+            {user && (
+              <IconLink
+                href="/Notifications"
+                label="Notifications"
+                count={unreadNotifications}
+                tone="brand"
+                className="hidden sm:flex"
+              >
+                <BellIcon />
+              </IconLink>
             )}
-          >
-            💬 Messages
 
-            {unreadMessages > 0 && (
-              <span className="ml-2 rounded-full bg-blue-500 px-2 py-0.5 text-[9px] font-black text-white">
-                {unreadMessages}
-              </span>
+            <IconLink href="/Panier" label="Panier" count={cartCount}>
+              <CartIcon />
+            </IconLink>
+
+            {user ? (
+              <Link
+                href="/Compte"
+                className="ml-1 flex items-center gap-2 rounded-full py-1 pl-1 pr-1 transition hover:bg-surface-2 md:pr-3"
+                title="Mon compte"
+              >
+                <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-brand-soft text-sm font-bold text-brand">
+                  {user.profile_photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- URL externe fournie par l'API
+                    <img src={user.profile_photo_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    user.name?.charAt(0).toUpperCase() || <UserIcon size={16} />
+                  )}
+                </span>
+                <span className="hidden text-left leading-tight md:block">
+                  <span className="block text-[11px] text-muted">Bonjour,</span>
+                  <span className="block max-w-[110px] truncate text-sm font-semibold text-ink">
+                    {firstName || "Mon compte"}
+                  </span>
+                </span>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAuthMode("login")}
+                className="ml-1 flex h-10 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-on-brand transition hover:bg-brand-hover"
+              >
+                <UserIcon size={17} />
+                <span className="hidden sm:inline">Se connecter</span>
+              </button>
             )}
-          </Link>
+          </div>
+        </div>
 
+        {/* ===================== RECHERCHE MOBILE ===================== */}
+        <div className="px-4 pb-3 md:hidden">{searchForm("navbar-search-mobile")}</div>
+
+        {/* ===================== LIENS (DESKTOP) ===================== */}
+        <nav aria-label="Navigation principale" className="hidden border-t border-line lg:block">
+          <div className="mx-auto flex h-11 max-w-7xl items-center gap-1 px-6">
+            {NAV_LINKS.map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                aria-current={isActive(href) ? "page" : undefined}
+                className={`relative flex h-full items-center px-3 text-sm font-medium transition ${
+                  isActive(href)
+                    ? "text-brand after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand"
+                    : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                {label}
+                {href === "/Messageries" && unreadMessages > 0 && (
+                  <span className="ml-1.5 rounded-full bg-brand px-1.5 text-[10px] font-bold text-on-brand">
+                    {unreadMessages}
+                  </span>
+                )}
+              </Link>
+            ))}
+
+            <div className="ml-auto flex items-center gap-1">
+              {isSeller && (
+                <Link
+                  href="/Vendeur"
+                  className="rounded-full bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand transition hover:bg-brand hover:text-on-brand"
+                >
+                  Espace vendeur
+                </Link>
+              )}
+              {user?.role === "admin" && (
+                <Link
+                  href="/Admin"
+                  className="rounded-full bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand transition hover:bg-brand hover:text-on-brand"
+                >
+                  Administration
+                </Link>
+              )}
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-danger-soft hover:text-danger"
+                >
+                  <LogoutIcon size={14} /> Déconnexion
+                </button>
+              )}
+            </div>
+          </div>
         </nav>
 
-        {/* =================================================
-            ACTIONS
-        ================================================= */}
+        {/* ===================== MENU MOBILE ===================== */}
+        {menuOpen && (
+          <nav aria-label="Menu mobile" className="border-t border-line bg-surface lg:hidden">
+            <div className="mx-auto flex max-w-7xl flex-col px-2 py-2">
+              {[
+                ...NAV_LINKS,
+                { href: "/Favoris", label: "Favoris", icon: HeartIcon },
+                { href: "/Panier", label: "Panier", icon: CartIcon },
+                ...(user
+                  ? [
+                      { href: "/Notifications", label: "Notifications", icon: BellIcon },
+                      { href: "/Compte", label: "Mon compte", icon: UserIcon },
+                    ]
+                  : []),
+                ...(isSeller ? [{ href: "/Vendeur", label: "Espace vendeur", icon: StoreIcon }] : []),
+                ...(user?.role === "admin" ? [{ href: "/Admin", label: "Administration", icon: GridIcon }] : []),
+              ].map(({ href, label, icon: LinkIcon }) => {
+                const badge =
+                  href === "/Messageries"
+                    ? unreadMessages
+                    : href === "/Favoris"
+                    ? favoriteCount
+                    : href === "/Panier"
+                    ? cartCount
+                    : href === "/Notifications"
+                    ? unreadNotifications
+                    : 0;
 
-        <div className="ml-auto flex items-center gap-2">
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setMenuOpen(false)}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                      isActive(href) ? "bg-brand-soft text-brand" : "text-ink-soft hover:bg-surface-2"
+                    }`}
+                  >
+                    <LinkIcon size={18} />
+                    <span className="flex-1">{label}</span>
+                    {badge > 0 && (
+                      <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-on-accent">
+                        {badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
 
-          {/* =================================================
-              AMPOULE
-              
-              L'ampoule utilise lightOn.
-              La Navbar, elle, reste sombre.
-          ================================================= */}
-
-          <button
-            type="button"
-            onClick={toggleLight}
-            title={
-              lightOn
-                ? "Éteindre la lumière"
-                : "Allumer la lumière"
-            }
-            aria-label={
-              lightOn
-                ? "Éteindre la lumière"
-                : "Allumer la lumière"
-            }
-            className={`flex h-10 w-10 items-center justify-center rounded-xl border text-lg transition-all duration-500 ${
-              lightOn
-                ? "border-yellow-400/50 bg-yellow-400/15 text-yellow-400 shadow-[0_0_25px_rgba(250,204,21,0.25)]"
-                : "border-white/10 bg-white/[0.03] text-zinc-500 hover:border-yellow-400/30 hover:bg-yellow-400/10 hover:text-yellow-300"
-            }`}
-          >
-            💡
-          </button>
-
-          {/* =================================================
-              PANIER
-          ================================================= */}
-
-          <Link
-            href="/Panier"
-            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] transition hover:border-blue-400/30 hover:bg-blue-500/10"
-          >
-            🛒
-
-            <Badge count={cartCount} />
-          </Link>
-
-          {/* =================================================
-              NOTIFICATIONS
-          ================================================= */}
-
-          <Link
-            href="/Notifications"
-            className="relative hidden h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] transition hover:border-blue-400/30 hover:bg-blue-500/10 sm:flex"
-          >
-            🔔
-
-            <Badge
-              count={unreadNotifications}
-            />
-          </Link>
-
-          {/* =================================================
-              COMPTE
-          ================================================= */}
-
-          <Link
-            href="/Compte"
-            className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-blue-400/30 hover:bg-blue-500/10"
-          >
-
-            <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 text-[10px] font-black text-black">
-
-              {user?.profile_photo_url ? (
-                <img
-                  src={user.profile_photo_url}
-                  alt={user.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                user?.name
-                  ?.charAt(0)
-                  .toUpperCase() || "?"
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-1 flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-danger transition hover:bg-danger-soft"
+                >
+                  <LogoutIcon size={18} /> Déconnexion
+                </button>
               )}
-
-            </span>
-
-            <span className="hidden text-sm font-semibold text-white md:block">
-              Mon compte
-            </span>
-
-          </Link>
-
-          {/* =================================================
-              MENU MOBILE
-          ================================================= */}
-
-          <button
-            type="button"
-            onClick={() =>
-              setMenuOpen(
-                (previous) =>
-                  !previous
-              )
-            }
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-xl text-white transition hover:border-blue-400/30 hover:bg-blue-500/10 xl:hidden"
-            aria-label="Ouvrir le menu"
-          >
-            {menuOpen ? "✕" : "☰"}
-          </button>
-
-        </div>
-      </div>
-
-      {/* =====================================================
-          MENU MOBILE
-      ===================================================== */}
-
-      {menuOpen && (
-        <div className="border-t border-white/10 bg-[#020407]/98 px-4 py-4 xl:hidden">
-
-          <nav className="mx-auto flex max-w-7xl flex-col gap-2">
-
-            <Link
-              href="/"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass("/")}
-            >
-              🏠 Accueil
-            </Link>
-
-            <Link
-              href="/Produits"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Produits"
-              )}
-            >
-              🛍️ Produits
-            </Link>
-
-            <Link
-              href="/Boutique"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Boutique"
-              )}
-            >
-              🏪 Boutiques
-            </Link>
-
-            <Link
-              href="/Commandes"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Commandes"
-              )}
-            >
-              📦 Commandes
-            </Link>
-
-            <Link
-              href="/Favoris"
-              onClick={closeMobileMenu}
-              className="flex items-center justify-between rounded-xl border border-red-400/20 bg-red-500/[0.05] px-4 py-3 text-sm font-bold text-red-300"
-            >
-              <span>
-                ❤️ Favoris
-              </span>
-
-              {favoriteCount > 0 && (
-                <span className="rounded-full bg-red-500 px-2 py-0.5 text-[9px] font-black text-white">
-                  {favoriteCount}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/Messageries"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Messageries"
-              )}
-            >
-              💬 Messages
-
-              {unreadMessages > 0 && (
-                <span className="ml-2 rounded-full bg-blue-500 px-2 py-0.5 text-[9px] font-black text-white">
-                  {unreadMessages}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/Panier"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Panier"
-              )}
-            >
-              🛒 Panier
-
-              {cartCount > 0 && (
-                <span className="ml-2 rounded-full bg-blue-500 px-2 py-0.5 text-[9px] font-black text-white">
-                  {cartCount}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/Notifications"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Notifications"
-              )}
-            >
-              🔔 Notifications
-
-              {unreadNotifications > 0 && (
-                <span className="ml-2 rounded-full bg-blue-500 px-2 py-0.5 text-[9px] font-black text-white">
-                  {unreadNotifications}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/Compte"
-              onClick={closeMobileMenu}
-              className={desktopLinkClass(
-                "/Compte"
-              )}
-            >
-              👤 Mon compte
-            </Link>
-
-            {/* AMPOULE MOBILE */}
-
-            <button
-              type="button"
-              onClick={toggleLight}
-              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-bold transition ${
-                lightOn
-                  ? "border-yellow-400/50 bg-yellow-400/10 text-yellow-400"
-                  : "border-white/10 bg-white/[0.03] text-zinc-400"
-              }`}
-            >
-              <span>
-                💡 Lumière
-              </span>
-
-              <span>
-                {lightOn ? "ON" : "OFF"}
-              </span>
-            </button>
-
-            {/* DÉCONNEXION */}
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="mt-2 rounded-xl border border-red-400/20 bg-red-500/[0.05] px-4 py-3 text-left text-sm font-bold text-red-400 transition hover:bg-red-500/10"
-            >
-              🚪 Déconnexion
-            </button>
-
+            </div>
           </nav>
-        </div>
-      )}
-    </header>
+        )}
+      </header>
+
+      {authMode && <AuthModal mode={authMode} onClose={closeAuth} onSuccess={handleAuthSuccess} />}
+    </>
   );
 }

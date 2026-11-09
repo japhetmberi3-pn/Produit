@@ -1,26 +1,125 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Mode sombre piloté par l'attribut data-theme posé sur <html>
+ * (voir app/layout.tsx et app/context/ThemeContext.tsx).
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* =========================================================
+   JETONS DE COULEUR
+   Toujours utiliser ces couleurs (bg-surface, text-ink...) :
+   elles s'adaptent automatiquement au thème clair / sombre.
+========================================================= */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --page: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --ink: #0f172a;
+  --ink-soft: #334155;
+  --muted: #64748b;
+  --line: #e2e8f0;
+
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eff6ff;
+  --on-brand: #ffffff;
+
+  --accent: #f97316;
+  --accent-hover: #ea580c;
+  --accent-soft: #fff7ed;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #f0fdf4;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --star: #f59e0b;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: #0b0f17;
+  --surface: #121926;
+  --surface-2: #1a2232;
+  --ink: #e8edf5;
+  --ink-soft: #cbd5e1;
+  --muted: #94a3b8;
+  --line: #263044;
+
+  --brand: #3b82f6;
+  --brand-hover: #60a5fa;
+  --brand-soft: #172554;
+  --on-brand: #ffffff;
+
+  --accent: #fb923c;
+  --accent-hover: #fdba74;
+  --accent-soft: #3b2412;
+  --on-accent: #1c1917;
+
+  --success: #4ade80;
+  --success-soft: #0f2a1a;
+  --danger: #f87171;
+  --danger-soft: #3a1414;
+  --star: #fbbf24;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-star: var(--star);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =========================================================
+   VISUEL PRODUIT (pas d'image côté API)
+   La teinte --h est calculée à partir du produit.
+========================================================= */
+
+.product-visual {
+  background:
+    radial-gradient(circle at 80% 15%, hsl(var(--h) 90% 97% / 0.9), transparent 45%),
+    linear-gradient(135deg, hsl(var(--h) 75% 93%), hsl(calc(var(--h) + 35) 70% 85%));
+  color: hsl(var(--h) 55% 32%);
+}
+
+[data-theme="dark"] .product-visual {
+  background:
+    radial-gradient(circle at 80% 15%, hsl(var(--h) 60% 40% / 0.35), transparent 45%),
+    linear-gradient(135deg, hsl(var(--h) 35% 17%), hsl(calc(var(--h) + 35) 35% 24%));
+  color: hsl(var(--h) 70% 78%);
 }

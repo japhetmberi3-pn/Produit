@@ -12,11 +12,6 @@ if (typeof window !== "undefined") {
   window.Pusher = Pusher;
 }
 
-const token =
-  typeof window !== "undefined"
-    ? localStorage.getItem("token")
-    : null;
-
 const echo =
   typeof window !== "undefined"
     ? new Echo({
@@ -28,13 +23,17 @@ const echo =
         forceTLS: false,
         enabledTransports: ["ws", "wss"],
 
-        authEndpoint: `${API_URL}/broadcasting/auth`,
-
-        auth: {
+        // Le token est relu à chaque autorisation de canal (headersProvider),
+        // pour suivre les connexions / déconnexions sans recharger la page.
+        channelAuthorization: {
+          endpoint: `${API_URL}/broadcasting/auth`,
+          transport: "ajax",
           headers: {
-            Authorization: `Bearer ${token}`,
             Accept: "application/json",
           },
+          headersProvider: () => ({
+            Authorization: `Bearer ${localStorage.getItem("token") ?? ""}`,
+          }),
         },
       })
     : null;

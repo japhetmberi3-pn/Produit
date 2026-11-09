@@ -1,7 +1,7 @@
 "use client";
 import { API_URL } from "@/lib/config";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AnimatedContainer from "@/app/components/AnimatedContainer";
@@ -25,7 +25,17 @@ interface Product {
 }
 
 
+// useSearchParams doit être sous une frontière <Suspense>, sinon `next build` échoue
+// (doc Next : use-search-params.md).
 export default function RecherchePage() {
+  return (
+    <Suspense fallback={null}>
+      <RechercheContent />
+    </Suspense>
+  );
+}
+
+function RechercheContent() {
   const searchParams = useSearchParams();
 
   const query = searchParams.get("q")?.trim() || "";

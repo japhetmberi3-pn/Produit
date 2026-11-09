@@ -2,62 +2,64 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
-  useState,
+  useMemo,
   type ReactNode,
-  type Dispatch,
-  type SetStateAction,
 } from "react";
 
+import {
+  notifyLocalStorageChange,
+  useLocalStorageItem,
+} from "@/lib/useLocalStorage";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
+
+export type Theme = "light" | "dark";
+
+export { THEME_STORAGE_KEY };
+
 interface ThemeContextType {
-  lightOn: boolean;
-  setLightOn: Dispatch<SetStateAction<boolean>>;
-  toggleLight: () => void;
+  theme: Theme;
+  isDark: boolean;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(
-  undefined
-);
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function ThemeProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const [lightOn, setLightOn] = useState<boolean>(false);
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  // Clair par défaut ; la préférence est sauvegardée dans localStorage.
+  const stored = useLocalStorageItem(THEME_STORAGE_KEY);
+  const theme: Theme = stored === "dark" ? "dark" : "light";
 
-  // Récupérer l'état sauvegardé
+  // Synchronise l'attribut lu par le CSS (aucun setState ici).
   useEffect(() => {
-    const savedLight = localStorage.getItem("shopx_light_on");
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
-    if (savedLight === "true") {
-      setLightOn(true);
+  const setTheme = useCallback((next: Theme) => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // localStorage indisponible : le thème s'applique quand même ci-dessous.
     }
+
+    document.documentElement.setAttribute("data-theme", next);
+    notifyLocalStorageChange();
   }, []);
 
-  // Sauvegarder automatiquement l'état
-  useEffect(() => {
-    localStorage.setItem(
-      "shopx_light_on",
-      String(lightOn)
-    );
-  }, [lightOn]);
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  }, [theme, setTheme]);
 
-  const toggleLight = () => {
-    setLightOn((previous) => !previous);
-  };
+  const value = useMemo(
+    () => ({ theme, isDark: theme === "dark", setTheme, toggleTheme }),
+    [theme, setTheme, toggleTheme]
+  );
 
   return (
-    <ThemeContext.Provider
-      value={{
-        lightOn,
-        setLightOn,
-        toggleLight,
-      }}
-    >
-      {children}
-    </ThemeContext.Provider>
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
 }
 

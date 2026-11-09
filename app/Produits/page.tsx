@@ -1,43 +1,46 @@
 "use client";
-import { API_URL } from "@/lib/config";
 
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  FormEvent,
+  type ChangeEvent,
+  type FormEvent,
+  Suspense,
   useCallback,
   useEffect,
-  useRef,
+  useMemo,
   useState,
 } from "react";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-
-import AnimatedContainer from "@/app/components/AnimatedContainer";
+import Footer from "@/app/components/Footer";
+import {
+  ChevronRightIcon,
+  CloseIcon,
+  FilterIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  StarIcon,
+  TrashIcon,
+} from "@/app/components/icons";
 import Navbar from "@/app/components/Navbar";
+import ProductCard, {
+  type AddToCartState,
+  ProductCardSkeleton,
+} from "@/app/components/shop/ProductCard";
 import { useAuth } from "@/app/context/AuthContext";
-import { useTheme } from "@/app/context/ThemeContext";
+import { apiFetch, errorMessage, UnauthorizedError } from "@/lib/api";
+import {
+  addToCart,
+  normalizeText,
+  type Product,
+  type Shop,
+  useFavorites,
+} from "@/lib/shop";
 
-interface Shop {
-  id: number;
-  name: string;
-  description?: string | null;
-}
-
-interface Product {
-  id: number;
-  user_id: number;
-  shop_id: number;
-  name: string;
-  description?: string | null;
-  price: number;
-  stock: number;
-  created_at: string;
-  updated_at: string;
-  rating?: number;
-  average_rating?: number;
-  reviews_count?: number;
-  shop?: Shop | null;
-}
+/* =====================================================
+ * TYPES
+ * ===================================================== */
 
 interface ProductForm {
   name: string;
@@ -46,1899 +49,832 @@ interface ProductForm {
   stock: string;
 }
 
-interface Conversation {
-  id: number;
-  unread_count?: number;
-}
-
-interface CartItem {
-  id: number;
-  quantity: number;
-}
-
-interface ApiObjectResponse {
-  message?: string;
-  product?: Product;
-}
-
-interface ApiResponse {
-  message?: string;
-  products?: Product[];
-}
-
-/*
- * =====================================================
- * AVIS
- * =====================================================
- */
-
-interface Review {
-  id: number;
-  rating: number;
-  comment: string | null;
-  created_at: string;
-  user?: {
-    id: number;
-    name: string;
-  };
-}
-
 interface ProductReviews {
-  reviews: Review[];
   average: number;
   count: number;
 }
 
-/*
- * =====================================================
- * API
- * =====================================================
- */
+type SortKey = "recent" | "price-asc" | "price-desc" | "rating" | "name";
 
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "recent", label: "Nouveautés" },
+  { value: "price-asc", label: "Prix croissant" },
+  { value: "price-desc", label: "Prix décroissant" },
+  { value: "rating", label: "Mieux notés" },
+  { value: "name", label: "Nom (A → Z)" },
+];
 
-/*
- * =====================================================
- * NOTE + FORMULAIRE D'AVIS
- * =====================================================
- */
+const EMPTY_FORM: ProductForm = { name: "", description: "", price: "", stock: "" };
 
-function ProductRating({
-  product,
-  average,
-  reviewCount,
-  reviewProductId,
-  reviewRating,
-  reviewComment,
-  reviewSending,
-  reviewMessage,
-  onOpenReview,
+const inputClass =
+  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm text-ink outline-none transition placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand/15";
+
+/* =====================================================
+ * FORMULAIRE D'AVIS (dans la carte produit)
+ * ===================================================== */
+
+function ReviewBox({
+  productId,
+  open,
+  rating,
+  comment,
+  sending,
+  message,
+  onOpen,
   onRatingChange,
   onCommentChange,
-  onSubmitReview,
-  onCancelReview,
+  onSubmit,
+  onCancel,
 }: {
-  product: Product;
-  average: number;
-  reviewCount: number;
-  reviewProductId: number | null;
-  reviewRating: number;
-  reviewComment: string;
-  reviewSending: boolean;
-  reviewMessage: string;
-  onOpenReview: () => void;
+  productId: number;
+  open: boolean;
+  rating: number;
+  comment: string;
+  sending: boolean;
+  message: string;
+  onOpen: () => void;
   onRatingChange: (rating: number) => void;
   onCommentChange: (comment: string) => void;
-  onSubmitReview: () => void;
-  onCancelReview: () => void;
+  onSubmit: () => void;
+  onCancel: () => void;
 }) {
-  const isOpen = reviewProductId === product.id;
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-2 flex w-fit items-center gap-1 text-xs font-medium text-muted transition hover:text-brand"
+      >
+        <StarIcon size={13} filled={false} /> Donner une note
+      </button>
+    );
+  }
 
   return (
-    <div className="mt-4">
+    <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3">
+      <p className="text-xs font-semibold text-ink-soft">Votre note</p>
 
-      {/* =================================================
-          NOTE ACTUELLE
-      ================================================== */}
-
-      <div className="flex items-center gap-2">
-
-        <div className="flex items-center">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <span
-              key={star}
-              className={`text-lg leading-none ${
-                star <= Math.round(average)
-                  ? "text-yellow-400"
-                  : "text-zinc-700"
-              }`}
-            >
-              ★
-            </span>
-          ))}
-        </div>
-
-        <span className="text-xs font-semibold text-zinc-400">
-          {average.toFixed(1)}
-        </span>
-
-        <span className="text-xs text-zinc-600">
-          ({reviewCount} avis)
-        </span>
-
+      <div className="mt-1.5 flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onRatingChange(star)}
+            disabled={sending}
+            aria-label={`Donner ${star} étoile${star > 1 ? "s" : ""}`}
+            className={`transition hover:scale-110 ${star <= rating ? "text-star" : "text-line"}`}
+          >
+            <StarIcon size={22} />
+          </button>
+        ))}
+        <span className="ml-2 text-xs font-semibold text-ink-soft">{rating}/5</span>
       </div>
 
-      {/* =================================================
-          BOUTON DONNER UNE NOTE
-      ================================================== */}
+      <label
+        htmlFor={`review-comment-${productId}`}
+        className="mt-3 block text-xs font-semibold text-ink-soft"
+      >
+        Commentaire
+      </label>
+      <textarea
+        id={`review-comment-${productId}`}
+        value={comment}
+        onChange={(event) => onCommentChange(event.target.value)}
+        maxLength={1000}
+        rows={3}
+        disabled={sending}
+        placeholder="Qu'avez-vous pensé de ce produit ?"
+        className={`${inputClass} mt-1 resize-none`}
+      />
+      <p className="mt-0.5 text-right text-[10px] text-muted">{comment.length}/1000</p>
 
-      {!isOpen && (
+      {message && <p className="mt-1 text-xs text-ink-soft">{message}</p>}
+
+      <div className="mt-2 flex gap-2">
         <button
           type="button"
-          onClick={onOpenReview}
-          className="mt-3 rounded-lg border border-yellow-400/20 bg-yellow-400/[0.04] px-3 py-2 text-xs font-bold text-yellow-400 transition hover:border-yellow-400/40 hover:bg-yellow-400/[0.08]"
+          onClick={onSubmit}
+          disabled={sending}
+          className="flex-1 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-on-brand transition hover:bg-brand-hover disabled:opacity-60"
         >
-          ⭐ Donner une note
+          {sending ? "Publication..." : "Publier mon avis"}
         </button>
-      )}
-
-      {/* =================================================
-          FORMULAIRE D'AVIS
-      ================================================== */}
-
-      {isOpen && (
-        <div className="mt-4 rounded-2xl border border-yellow-400/15 bg-yellow-400/[0.03] p-4">
-
-          <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Votre note
-          </p>
-
-          {/* ÉTOILES CLIQUABLES */}
-
-          <div className="mt-3 flex items-center gap-1">
-
-            {[1, 2, 3, 4, 5].map((star) => (
-              <button
-                key={star}
-                type="button"
-                onClick={() => onRatingChange(star)}
-                disabled={reviewSending}
-                className={`text-3xl leading-none transition hover:scale-110 ${
-                  star <= reviewRating
-                    ? "text-yellow-400"
-                    : "text-zinc-700 hover:text-yellow-500"
-                }`}
-                aria-label={`Donner ${star} étoile${
-                  star > 1 ? "s" : ""
-                }`}
-              >
-                ★
-              </button>
-            ))}
-
-            <span className="ml-2 text-sm font-bold text-yellow-400">
-              {reviewRating}/5
-            </span>
-
-          </div>
-
-          {/* COMMENTAIRE */}
-
-          <div className="mt-4">
-
-            <label
-              htmlFor={`review-comment-${product.id}`}
-              className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
-            >
-              Commentaire
-            </label>
-
-            <textarea
-              id={`review-comment-${product.id}`}
-              value={reviewComment}
-              onChange={(event) =>
-                onCommentChange(event.target.value)
-              }
-              maxLength={1000}
-              rows={3}
-              disabled={reviewSending}
-              placeholder="Que pensez-vous de ce produit ?"
-              className="w-full resize-none rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-yellow-400/40"
-            />
-
-            <div className="mt-1 text-right text-[10px] text-zinc-700">
-              {reviewComment.length}/1000
-            </div>
-
-          </div>
-
-          {/* MESSAGE */}
-
-          {reviewMessage && (
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-zinc-300">
-              {reviewMessage}
-            </div>
-          )}
-
-          {/* BOUTONS */}
-
-          <div className="mt-4 flex gap-2">
-
-            <button
-              type="button"
-              onClick={onSubmitReview}
-              disabled={reviewSending}
-              className="flex-1 rounded-xl bg-yellow-500 px-4 py-2.5 text-xs font-black text-black transition hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {reviewSending
-                ? "Publication..."
-                : "Publier mon avis"}
-            </button>
-
-            <button
-              type="button"
-              onClick={onCancelReview}
-              disabled={reviewSending}
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-bold text-zinc-400 transition hover:text-white"
-            >
-              Annuler
-            </button>
-
-          </div>
-
-        </div>
-      )}
-
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={sending}
+          className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-ink-soft transition hover:bg-surface"
+        >
+          Annuler
+        </button>
+      </div>
     </div>
   );
 }
 
-/*
- * =====================================================
+/* =====================================================
  * PAGE PRODUITS
- * =====================================================
- */
+ * ===================================================== */
 
+// useSearchParams doit être sous une frontière <Suspense> (doc Next : use-search-params.md).
 export default function ProduitsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProduitsContent />
+    </Suspense>
+  );
+}
+
+function ProduitsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, logout } = useAuth();
+  const favorites = useFavorites();
 
-  /*
-   * =====================================================
-   * AUTHENTIFICATION GLOBALE
-   * =====================================================
-   */
-
-  const { user } = useAuth();
-
-  /*
-   * =====================================================
-   * PRODUITS
-   * =====================================================
-   */
+  /* ===================== DONNÉES ===================== */
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [productReviews, setProductReviews] = useState<Record<number, ProductReviews>>({});
+  const [addStates, setAddStates] = useState<Record<number, AddToCartState>>({});
 
-  const [form, setForm] = useState<ProductForm>({
-    name: "",
-    description: "",
-    price: "",
-    stock: "",
-  });
+  /* ===================== FILTRES ===================== */
 
-  const [editingProduct, setEditingProduct] =
-    useState<Product | null>(null);
+  const urlSearch = searchParams.get("search") ?? "";
+  const [query, setQuery] = useState(urlSearch);
+  const [lastUrlSearch, setLastUrlSearch] = useState(urlSearch);
 
+  // Nouvelle recherche depuis la Navbar : on met à jour le champ pendant le rendu
+  // (pattern React recommandé, sans useEffect).
+  if (urlSearch !== lastUrlSearch) {
+    setLastUrlSearch(urlSearch);
+    setQuery(urlSearch);
+  }
+
+  const [sort, setSort] = useState<SortKey>("recent");
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [selectedShops, setSelectedShops] = useState<number[]>([]);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  /* ===================== GESTION (vendeur / admin) ===================== */
+
+  const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(true);
 
-  /*
-   * =====================================================
-   * PANIER
-   *
-   * Conservé ici car cartCount est utilisé dans
-   * le contenu de cette page.
-   * =====================================================
-   */
+  /* ===================== AVIS ===================== */
 
-  const [cartCount, setCartCount] = useState(0);
-
-  /*
-   * =====================================================
-   * AVIS
-   * =====================================================
-   */
-
-  const [productReviews, setProductReviews] =
-    useState<Record<number, ProductReviews>>({});
-
-  const [reviewProductId, setReviewProductId] =
-    useState<number | null>(null);
-
+  const [reviewProductId, setReviewProductId] = useState<number | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSending, setReviewSending] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState("");
 
-  const [reviewComment, setReviewComment] =
-    useState("");
+  /* ===================== RÔLES ===================== */
 
-  const [reviewSending, setReviewSending] =
-    useState(false);
+  const isAdmin = user?.role === "admin";
+  const isSeller = user?.role === "vendeur" || user?.role === "seller";
+  const canManageProducts = isAdmin || isSeller;
 
-  const [reviewMessage, setReviewMessage] =
-    useState("");
-
-  /*
-   * =====================================================
-   * FAVORIS
-   * =====================================================
-   */
-
-  const [favoriteIds, setFavoriteIds] =
-    useState<number[]>([]);
-
-  /*
-   * =====================================================
-   * DÉCONNEXION
-   * =====================================================
-   */
+  /* =====================================================
+   * CHARGEMENT
+   * ===================================================== */
 
   const forceLogout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-
+    logout();
     router.push("/Connexion");
-  }, [router]);
-
-  /*
-   * =====================================================
-   * RÉCUPÉRER LES AVIS D'UN PRODUIT
-   * =====================================================
-   */
+  }, [logout, router]);
 
   const fetchProductReviews = useCallback(
     async (productId: number) => {
       try {
-        const token = localStorage.getItem("token");
-
-        if (!token) return;
-
-        const response = await fetch(
-          `${API_URL}/products/${productId}/reviews`,
-          {
-            method: "GET",
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.status === 401) {
+        const data = await apiFetch<ProductReviews>(`/products/${productId}/reviews`);
+        setProductReviews((previous) => ({ ...previous, [productId]: data }));
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
           forceLogout();
           return;
         }
-
-        if (!response.ok) {
-          console.error(
-            `Impossible de récupérer les avis du produit ${productId}.`
-          );
-
-          return;
-        }
-
-        const data: ProductReviews =
-          await response.json();
-
-        setProductReviews((previous) => ({
-          ...previous,
-          [productId]: data,
-        }));
-      } catch (err) {
-        console.error(
-          `Erreur récupération avis produit ${productId} :`,
-          err
-        );
+        console.error(`Erreur récupération avis produit ${productId} :`, err);
       }
     },
     [forceLogout]
   );
 
-  /*
-   * =====================================================
-   * PRODUITS
-   * =====================================================
-   */
+  type CatalogResponse = Product[] | { products?: Product[] };
 
-  const fetchProducts = useCallback(async () => {
-    try {
-      const token = localStorage.getItem("token");
+  const applyCatalog = useCallback(
+    async (data: CatalogResponse) => {
+      const list = Array.isArray(data) ? data : data.products || [];
 
-      if (!token) {
-        forceLogout();
-        return;
-      }
-
-      const response = await fetch(
-        `${API_URL}/products`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.status === 401) {
-        forceLogout();
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          "Impossible de récupérer les produits."
-        );
-      }
-
-      const data:
-        | Product[]
-        | ApiResponse =
-        await response.json();
-
-      const productList = Array.isArray(data)
-        ? data
-        : data.products || [];
-
-      setProducts(productList);
-
-      await Promise.all(
-        productList.map((product) =>
-          fetchProductReviews(product.id)
-        )
-      );
-    } catch (err) {
-      console.error(
-        "Erreur récupération produits :",
-        err
-      );
-
-      setError(
-        "Impossible de récupérer les produits."
-      );
-    } finally {
+      setProducts(list);
+      setError("");
       setLoading(false);
-    }
-  }, [
-    forceLogout,
-    fetchProductReviews,
-  ]);
+      await Promise.all(list.map((product) => fetchProductReviews(product.id)));
+    },
+    [fetchProductReviews]
+  );
 
-  /*
-   * =====================================================
-   * PANIER
-   * =====================================================
-   */
-
-  const fetchCart = useCallback(async () => {
-    try {
-      const token = localStorage.getItem("token");
-
-      if (!token) return;
-
-      const response = await fetch(
-        `${API_URL}/cart`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-
-      if (Array.isArray(data)) {
-        const total = data.reduce(
-          (
-            sum: number,
-            item: CartItem
-          ) =>
-            sum +
-            Number(item.quantity || 0),
-          0
-        );
-
-        setCartCount(total);
+  const handleCatalogError = useCallback(
+    (err: unknown) => {
+      setLoading(false);
+      if (err instanceof UnauthorizedError) {
+        forceLogout();
         return;
       }
+      console.error("Erreur récupération produits :", err);
+      setError("Impossible de récupérer les produits.");
+    },
+    [forceLogout]
+  );
 
-      if (Array.isArray(data.items)) {
-        const total = data.items.reduce(
-          (
-            sum: number,
-            item: CartItem
-          ) =>
-            sum +
-            Number(item.quantity || 0),
-          0
-        );
+  // Rechargement après création / modification.
+  const fetchProducts = useCallback(
+    () => apiFetch<CatalogResponse>("/products").then(applyCatalog, handleCatalogError),
+    [applyCatalog, handleCatalogError]
+  );
 
-        setCartCount(total);
-        return;
-      }
-
-      setCartCount(0);
-    } catch (err) {
-      console.error(
-        "Erreur panier :",
-        err
-      );
-    }
-  }, []);
-
-  /*
-   * =====================================================
-   * FAVORIS
-   * =====================================================
-   */
-
-  const loadFavorites = () => {
-    const storedFavorites =
-      localStorage.getItem(
-        "shopx_favorites"
-      );
-
-    if (!storedFavorites) {
-      setFavoriteIds([]);
-      return;
-    }
-
-    try {
-      const parsedFavorites: unknown =
-        JSON.parse(storedFavorites);
-
-      if (Array.isArray(parsedFavorites)) {
-        const normalizedFavorites = Array.from(
-          new Set(
-            parsedFavorites
-              .map((id) => Number(id))
-              .filter((id) => Number.isInteger(id))
-          )
-        );
-
-        setFavoriteIds(normalizedFavorites);
-      } else {
-        setFavoriteIds([]);
-      }
-    } catch (err) {
-      console.error(
-        "Erreur lecture favoris :",
-        err
-      );
-
-      setFavoriteIds([]);
-    }
-  };
-
-  const toggleFavorite = (
-    productId: number
-  ) => {
-    setFavoriteIds((previous) => {
-      const currentFavorites = Array.from(
-        new Set(
-          previous
-            .map((id) => Number(id))
-            .filter((id) => Number.isInteger(id))
-        )
-      );
-      const alreadyFavorite =
-        currentFavorites.includes(productId);
-
-      const updatedFavorites =
-        alreadyFavorite
-          ? currentFavorites.filter(
-              (id) =>
-                id !== productId
-            )
-          : [
-              ...currentFavorites,
-              productId,
-            ];
-
-      return updatedFavorites;
-    });
-  };
-
-  const favoritesInitialized = useRef(false);
-
+  // Chargement initial : les setState se font dans les callbacks de la promesse.
   useEffect(() => {
-    if (!favoritesInitialized.current) {
-      return;
-    }
-
-    try {
-      localStorage.setItem(
-        "shopx_favorites",
-        JSON.stringify(favoriteIds)
-      );
-
-      window.dispatchEvent(
-        new Event("favoritesUpdated")
-      );
-    } catch (err) {
-      console.error(
-        "Erreur sauvegarde favoris :",
-        err
-      );
-    }
-  }, [favoriteIds]);
-
-  /*
-   * =====================================================
-   * INITIALISATION
-   * =====================================================
-   */
-
-  useEffect(() => {
-    const storedToken =
-      localStorage.getItem("token");
-
-    if (!storedToken) {
+    if (!localStorage.getItem("token")) {
       forceLogout();
       return;
     }
 
-    loadFavorites();
-    favoritesInitialized.current = true;
+    apiFetch<CatalogResponse>("/products").then(applyCatalog, handleCatalogError);
+  }, [forceLogout, applyCatalog, handleCatalogError]);
 
-    fetchProducts();
-    fetchCart();
-  }, [
-    forceLogout,
-    fetchProducts,
-    fetchCart,
-  ]);
+  /* =====================================================
+   * LISTE FILTRÉE
+   * ===================================================== */
 
-  /*
-   * =====================================================
-   * FORMULAIRE PRODUIT
-   * =====================================================
-   */
+  const ratingOf = useCallback(
+    (product: Product) =>
+      Number(
+        productReviews[product.id]?.average ?? product.average_rating ?? product.rating ?? 0
+      ),
+    [productReviews]
+  );
 
-  const handleChange = (
-    e:
-      | React.ChangeEvent<HTMLInputElement>
-      | React.ChangeEvent<HTMLTextAreaElement>
-  ) => {
-    const {
-      name,
-      value,
-    } = e.target;
+  const shops = useMemo(() => {
+    const byId = new Map<number, Shop & { total: number }>();
 
-    setForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
+    products.forEach((product) => {
+      if (!product.shop) return;
+      const existing = byId.get(product.shop.id);
+      byId.set(product.shop.id, { ...product.shop, total: (existing?.total ?? 0) + 1 });
+    });
+
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [products]);
+
+  const visibleProducts = useMemo(() => {
+    const q = normalizeText(query);
+    const min = minPrice === "" ? null : Number(minPrice);
+    const max = maxPrice === "" ? null : Number(maxPrice);
+
+    const list = products.filter((product) => {
+      if (q) {
+        const haystack = normalizeText(
+          `${product.name} ${product.description ?? ""} ${product.shop?.name ?? ""}`
+        );
+        if (!haystack.includes(q)) return false;
+      }
+      if (inStockOnly && product.stock <= 0) return false;
+      if (selectedShops.length > 0 && (!product.shop || !selectedShops.includes(product.shop.id))) {
+        return false;
+      }
+      if (min !== null && product.price < min) return false;
+      if (max !== null && product.price > max) return false;
+      return true;
+    });
+
+    const sorters: Record<SortKey, (a: Product, b: Product) => number> = {
+      recent: (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+      "price-asc": (a, b) => a.price - b.price,
+      "price-desc": (a, b) => b.price - a.price,
+      rating: (a, b) => ratingOf(b) - ratingOf(a),
+      name: (a, b) => a.name.localeCompare(b.name, "fr"),
+    };
+
+    return list.sort(sorters[sort]);
+  }, [products, query, inStockOnly, selectedShops, minPrice, maxPrice, sort, ratingOf]);
+
+  const activeFilterCount =
+    (query ? 1 : 0) +
+    (inStockOnly ? 1 : 0) +
+    selectedShops.length +
+    (minPrice ? 1 : 0) +
+    (maxPrice ? 1 : 0);
+
+  const resetFilters = () => {
+    setQuery("");
+    setInStockOnly(false);
+    setSelectedShops([]);
+    setMinPrice("");
+    setMaxPrice("");
   };
 
-  /*
-   * =====================================================
-   * CRÉER / MODIFIER PRODUIT
-   * =====================================================
-   */
+  const toggleShop = (shopId: number) =>
+    setSelectedShops((previous) =>
+      previous.includes(shopId) ? previous.filter((id) => id !== shopId) : [...previous, shopId]
+    );
 
-  const handleSubmit = async (
-    e: FormEvent<HTMLFormElement>
-  ) => {
-    e.preventDefault();
+  /* =====================================================
+   * CRÉER / MODIFIER / SUPPRIMER
+   * ===================================================== */
 
+  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
+    setForm((previous) => ({ ...previous, [name]: value }));
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
     setSubmitting(true);
 
     try {
-      const token =
-        localStorage.getItem("token");
-
-      if (!token) {
-        forceLogout();
-        return;
-      }
-
-      const isEditing =
-        editingProduct !== null;
-
-      const url = isEditing
-        ? `${API_URL}/products/${editingProduct.id}`
-        : `${API_URL}/products`;
-
-      const method = isEditing
-        ? "PUT"
-        : "POST";
-
-      const response = await fetch(
-        url,
-        {
-          method,
-          headers: {
-            Accept:
-              "application/json",
-            "Content-Type":
-              "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            name: form.name,
-            description:
-              form.description,
-            price: Number(
-              form.price
-            ),
-            stock: Number(
-              form.stock
-            ),
-          }),
-        }
-      );
-
-      const data: ApiObjectResponse =
-        await response.json();
-
-      if (response.status === 401) {
-        forceLogout();
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Une erreur est survenue."
-        );
-      }
-
-      setForm({
-        name: "",
-        description: "",
-        price: "",
-        stock: "",
+      await apiFetch(editingProduct ? `/products/${editingProduct.id}` : "/products", {
+        method: editingProduct ? "PUT" : "POST",
+        body: {
+          name: form.name,
+          description: form.description,
+          price: Number(form.price),
+          stock: Number(form.stock),
+        },
       });
 
+      setForm(EMPTY_FORM);
       setEditingProduct(null);
-
       await fetchProducts();
     } catch (err) {
-      console.error(
-        "Erreur création/modification produit :",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Une erreur est survenue."
-      );
+      if (err instanceof UnauthorizedError) {
+        forceLogout();
+        return;
+      }
+      console.error("Erreur création/modification produit :", err);
+      setError(errorMessage(err, "Une erreur est survenue."));
     } finally {
       setSubmitting(false);
     }
   };
 
-  /*
-   * =====================================================
-   * MODIFIER
-   * =====================================================
-   */
-
-  const handleEdit = (
-    product: Product
-  ) => {
+  const handleEdit = (product: Product) => {
     setEditingProduct(product);
-
+    setManagerOpen(true);
     setForm({
       name: product.name,
-      description:
-        product.description || "",
-      price: String(
-        product.price
-      ),
-      stock: String(
-        product.stock
-      ),
+      description: product.description || "",
+      price: String(product.price),
+      stock: String(product.stock),
     });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cancelEdit = () => {
     setEditingProduct(null);
-
-    setForm({
-      name: "",
-      description: "",
-      price: "",
-      stock: "",
-    });
+    setForm(EMPTY_FORM);
   };
 
-  /*
-   * =====================================================
-   * SUPPRIMER
-   * =====================================================
-   */
-
-  const handleDelete = async (
-    productId: number
-  ) => {
-    const confirmation =
-      window.confirm(
-        "Voulez-vous vraiment supprimer ce produit ?"
-      );
-
-    if (!confirmation) return;
+  const handleDelete = async (productId: number) => {
+    if (!window.confirm("Voulez-vous vraiment supprimer ce produit ?")) return;
 
     try {
-      const token =
-        localStorage.getItem("token");
+      await apiFetch(`/products/${productId}`, { method: "DELETE" });
 
-      if (!token) {
-        forceLogout();
-        return;
-      }
-
-      const response = await fetch(
-        `${API_URL}/products/${productId}`,
-        {
-          method: "DELETE",
-          headers: {
-            Accept:
-              "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const data: ApiObjectResponse =
-        await response.json();
-
-      if (response.status === 401) {
-        forceLogout();
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Impossible de supprimer le produit."
-        );
-      }
-
-      setProducts(
-        (previous) =>
-          previous.filter(
-            (product) =>
-              product.id !==
-              productId
-          )
-      );
-
-      setProductReviews(
-        (previous) => {
-          const updated = {
-            ...previous,
-          };
-
-          delete updated[
-            productId
-          ];
-
-          return updated;
-        }
-      );
-
-      setFavoriteIds(
-        (previous) => {
-          const updated =
-            previous.filter(
-              (id) =>
-                id !== productId
-            );
-
-          localStorage.setItem(
-            "shopx_favorites",
-            JSON.stringify(
-              updated
-            )
-          );
-
-          window.dispatchEvent(
-            new Event(
-              "favoritesUpdated"
-            )
-          );
-
-          return updated;
-        }
-      );
+      setProducts((previous) => previous.filter((product) => product.id !== productId));
+      setProductReviews((previous) => {
+        const updated = { ...previous };
+        delete updated[productId];
+        return updated;
+      });
+      favorites.remove(productId);
     } catch (err) {
-      console.error(
-        "Erreur suppression produit :",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible de supprimer le produit."
-      );
+      if (err instanceof UnauthorizedError) {
+        forceLogout();
+        return;
+      }
+      console.error("Erreur suppression produit :", err);
+      setError(errorMessage(err, "Impossible de supprimer le produit."));
     }
   };
 
-  /*
-   * =====================================================
-   * AJOUTER AU PANIER
-   * =====================================================
-   */
+  /* =====================================================
+   * PANIER
+   * ===================================================== */
 
-  const addToCart = async (
-    productId: number
-  ) => {
+  const handleAddToCart = async (productId: number) => {
+    setError("");
+    setAddStates((s) => ({ ...s, [productId]: "adding" }));
+
     try {
-      const token =
-        localStorage.getItem("token");
-
-      if (!token) {
-        forceLogout();
-        return;
-      }
-
-      const response = await fetch(
-        `${API_URL}/cart`,
-        {
-          method: "POST",
-          headers: {
-            Accept:
-              "application/json",
-            "Content-Type":
-              "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            product_id:
-              productId,
-            quantity: 1,
-          }),
-        }
-      );
-
-      const data =
-        await response.json();
-
-      if (response.status === 401) {
-        forceLogout();
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Impossible d'ajouter le produit au panier."
-        );
-      }
-
-      await fetchCart();
+      await addToCart(productId);
+      setAddStates((s) => ({ ...s, [productId]: "added" }));
+      setTimeout(() => setAddStates((s) => ({ ...s, [productId]: "idle" })), 2000);
     } catch (err) {
-      console.error(
-        "Erreur ajout panier :",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible d'ajouter le produit au panier."
-      );
+      setAddStates((s) => ({ ...s, [productId]: "idle" }));
+      if (err instanceof UnauthorizedError) {
+        forceLogout();
+        return;
+      }
+      console.error("Erreur ajout panier :", err);
+      setError(errorMessage(err, "Impossible d'ajouter le produit au panier."));
     }
   };
 
-  /*
-   * =====================================================
-   * PUBLIER UN AVIS
-   * =====================================================
-   */
+  /* =====================================================
+   * AVIS
+   * ===================================================== */
+
+  const openReview = (productId: number) => {
+    setReviewProductId(productId);
+    setReviewRating(5);
+    setReviewComment("");
+    setReviewMessage("");
+  };
+
+  const closeReview = () => {
+    setReviewProductId(null);
+    setReviewRating(5);
+    setReviewComment("");
+    setReviewMessage("");
+  };
 
   const submitReview = async () => {
     if (!reviewProductId) return;
+    const productId = reviewProductId;
 
-    const productId =
-      reviewProductId;
+    setReviewSending(true);
+    setReviewMessage("");
 
     try {
-      setReviewSending(true);
-      setReviewMessage("");
+      await apiFetch(`/products/${productId}/reviews`, {
+        method: "POST",
+        body: { rating: reviewRating, comment: reviewComment.trim() || null },
+      });
 
-      const token =
-        localStorage.getItem("token");
-
-      if (!token) {
-        forceLogout();
-        return;
-      }
-
-      const response = await fetch(
-        `${API_URL}/products/${productId}/reviews`,
-        {
-          method: "POST",
-          headers: {
-            Accept:
-              "application/json",
-            "Content-Type":
-              "application/json",
-            Authorization:
-              `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            rating: reviewRating,
-            comment:
-              reviewComment.trim() ||
-              null,
-          }),
-        }
-      );
-
-      const data =
-        await response.json();
-
-      if (response.status === 401) {
-        forceLogout();
-        return;
-      }
-
-      if (!response.ok) {
-        setReviewMessage(
-          data.message ||
-            "Impossible d'ajouter votre avis."
-        );
-
-        return;
-      }
-
-      await fetchProductReviews(
-        productId
-      );
-
-      setReviewMessage(
-        "✅ Votre avis a été ajouté avec succès."
-      );
-
+      await fetchProductReviews(productId);
+      setReviewMessage("✅ Votre avis a été ajouté avec succès.");
       setReviewComment("");
       setReviewRating(5);
-
-      setTimeout(() => {
-        setReviewProductId(null);
-        setReviewMessage("");
-      }, 1200);
+      setTimeout(closeReview, 1200);
     } catch (err) {
-      console.error(
-        "Erreur ajout avis :",
-        err
-      );
-
-      setReviewMessage(
-        "Une erreur est survenue lors de l'envoi."
-      );
+      if (err instanceof UnauthorizedError) {
+        forceLogout();
+        return;
+      }
+      console.error("Erreur ajout avis :", err);
+      setReviewMessage(errorMessage(err, "Impossible d'ajouter votre avis."));
     } finally {
       setReviewSending(false);
     }
   };
 
-  /*
-   * =====================================================
-   * RÔLES
-   * =====================================================
-   */
-
-  const isAdmin =
-    user?.role === "admin";
-
-  const isSeller =
-    user?.role === "vendeur" ||
-    user?.role === "seller";
-
-  const canManageProducts =
-    isAdmin || isSeller;
-
-  const availableProducts =
-    products.filter(
-      (product) =>
-        product.stock > 0
-    ).length;
-
-  /*
-   * =====================================================
+  /* =====================================================
    * AFFICHAGE
-   * =====================================================
-   */
+   * ===================================================== */
+
+  const filtersPanel = (
+    <div className="space-y-6">
+      <div>
+        <label htmlFor="catalog-search" className="text-sm font-semibold text-ink">
+          Rechercher
+        </label>
+        <div className="relative mt-2">
+          <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            id="catalog-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Nom, description, boutique..."
+            className={`${inputClass} pl-9`}
+          />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-ink">Disponibilité</p>
+        <label className="mt-2 flex cursor-pointer items-center gap-2.5 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={inStockOnly}
+            onChange={(event) => setInStockOnly(event.target.checked)}
+            className="h-4 w-4 rounded accent-[var(--brand)]"
+          />
+          En stock uniquement
+        </label>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-ink">Prix (FCFA)</p>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            inputMode="numeric"
+            value={minPrice}
+            onChange={(event) => setMinPrice(event.target.value)}
+            placeholder="Min"
+            aria-label="Prix minimum"
+            className={inputClass}
+          />
+          <span className="text-muted">–</span>
+          <input
+            type="number"
+            min="0"
+            inputMode="numeric"
+            value={maxPrice}
+            onChange={(event) => setMaxPrice(event.target.value)}
+            placeholder="Max"
+            aria-label="Prix maximum"
+            className={inputClass}
+          />
+        </div>
+      </div>
+
+      {shops.length > 0 && (
+        <div>
+          <p className="text-sm font-semibold text-ink">Boutiques</p>
+          <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-1">
+            {shops.map((shop) => (
+              <li key={shop.id}>
+                <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink-soft">
+                  <input
+                    type="checkbox"
+                    checked={selectedShops.includes(shop.id)}
+                    onChange={() => toggleShop(shop.id)}
+                    className="h-4 w-4 rounded accent-[var(--brand)]"
+                  />
+                  <span className="flex-1 truncate">{shop.name}</span>
+                  <span className="text-xs text-muted">{shop.total}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {activeFilterCount > 0 && (
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="w-full rounded-xl border border-line py-2 text-sm font-medium text-ink-soft transition hover:bg-surface-2"
+        >
+          Réinitialiser les filtres
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <main className="min-h-screen bg-[#020407] text-white">
-
-      {/* =====================================================
-          BACKGROUND ELECTRIC
-      ====================================================== */}
-
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-
-        <div className="absolute left-[-15%] top-[-15%] h-[500px] w-[500px] rounded-full bg-blue-600/[0.08] blur-[140px]" />
-
-        <div className="absolute right-[-10%] top-[20%] h-[450px] w-[450px] rounded-full bg-cyan-400/[0.06] blur-[140px]" />
-
-        <div className="absolute bottom-[-15%] left-[30%] h-[500px] w-[500px] rounded-full bg-blue-500/[0.05] blur-[150px]" />
-
-      </div>
-
-      {/* =====================================================
-          NAVIGATION SHOPX
-          
-          La navigation est maintenant centralisée dans
-          app/components/Navbar.tsx
-      ====================================================== */}
-
+    <div className="min-h-screen bg-page text-ink">
       <Navbar />
 
-      {/* =====================================================
-          CONTENU
-      ====================================================== */}
-
-      <div className="relative overflow-hidden">
-
-        <div className="mx-auto max-w-7xl px-4 py-10 md:px-8">
-
-          {/* =================================================
-              HERO
-          ================================================== */}
-
-          <AnimatedContainer>
-
-            <section className="relative mb-10 overflow-hidden rounded-3xl border border-blue-400/10 bg-gradient-to-br from-blue-500/[0.07] via-[#05070b] to-cyan-400/[0.04] p-7 shadow-[0_0_50px_rgba(37,99,235,0.05)] md:p-10">
-
-              <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-blue-500/[0.08] blur-[100px]" />
-
-              <div className="pointer-events-none absolute bottom-[-100px] left-[30%] h-64 w-64 rounded-full bg-cyan-400/[0.05] blur-[100px]" />
-
-              <div className="relative">
-
-                <div className="mb-5 flex items-center gap-2">
-
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.9)]" />
-
-                  <span className="text-xs font-black uppercase tracking-[0.3em] text-blue-400">
-                    SHOPX CATALOGUE
-                  </span>
-
-                </div>
-
-                <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
-
-                  <div>
-
-                    <h1 className="max-w-3xl text-4xl font-black tracking-tight md:text-5xl">
-
-                      Découvrez notre{" "}
-
-                      <span className="bg-gradient-to-r from-blue-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
-                        collection
-                      </span>
-
-                    </h1>
-
-                    <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-500 md:text-base">
-                      Explorez les produits disponibles
-                      sur ShopX et trouvez exactement ce
-                      qu'il vous faut.
-                    </p>
-
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
-
-                    <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5">
-
-                      <p className="text-[9px] uppercase tracking-wider text-zinc-600">
-                        Produits
-                      </p>
-
-                      <p className="mt-1 text-2xl font-black text-white">
-                        {products.length}
-                      </p>
-
-                    </div>
-
-                    <div className="rounded-2xl border border-blue-400/15 bg-blue-500/[0.04] px-4 py-4 sm:px-5">
-
-                      <p className="text-[9px] uppercase tracking-wider text-zinc-600">
-                        Disponibles
-                      </p>
-
-                      <p className="mt-1 text-2xl font-black text-blue-400">
-                        {availableProducts}
-                      </p>
-
-                    </div>
-
-                    <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.03] px-4 py-4 sm:px-5">
-
-                      <p className="text-[9px] uppercase tracking-wider text-zinc-600">
-                        Panier
-                      </p>
-
-                      <p className="mt-1 text-2xl font-black text-cyan-300">
-                        {cartCount}
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-            </section>
-
-          </AnimatedContainer>
-
-          {/* =================================================
-              ERREUR
-          ================================================== */}
-
-          {error && (
-            <AnimatedContainer delay={0.1}>
-
-              <div className="mb-8 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-sm text-red-400">
-                {error}
-              </div>
-
-            </AnimatedContainer>
-          )}
-
-          {/* =================================================
-              FORMULAIRE PRODUIT
-          ================================================== */}
-
-          {canManageProducts && (
-            <AnimatedContainer delay={0.15}>
-
-              <section className="mb-12 overflow-hidden rounded-3xl border border-blue-400/10 bg-[#05070a] shadow-[0_0_40px_rgba(37,99,235,0.04)]">
-
-                <div className="border-b border-white/[0.07] bg-gradient-to-r from-blue-500/[0.06] to-cyan-400/[0.03] p-6 md:p-8">
-
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-
-                    <div>
-
-                      <div className="flex items-center gap-3">
-
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-500/10 text-blue-400">
-                          ✦
-                        </div>
-
-                        <h2 className="text-xl font-black">
-                          {editingProduct
-                            ? "Modifier le produit"
-                            : "Ajouter un produit"}
-                        </h2>
-
-                      </div>
-
-                      <p className="mt-2 text-xs text-zinc-600">
-                        {isSeller
-                          ? "Le produit sera automatiquement associé à votre boutique."
-                          : "Ajoutez et gérez les produits de la plateforme."}
-                      </p>
-
-                    </div>
-
-                    <span className="w-fit rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-300">
-                      {isAdmin
-                        ? "Administrateur"
-                        : "Vendeur"}
-                    </span>
-
-                  </div>
-
-                </div>
-
-                <form
-                  onSubmit={handleSubmit}
-                  className="grid gap-5 p-6 md:grid-cols-2 md:p-8"
-                >
-
-                  <div>
-
-                    <label
-                      htmlFor="name"
-                      className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
-                    >
-                      Nom du produit
-                    </label>
-
-                    <input
-                      id="name"
-                      name="name"
-                      type="text"
-                      value={form.name}
-                      onChange={handleChange}
-                      required
-                      className="w-full rounded-xl border border-white/10 bg-black px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-blue-400/50 focus:bg-blue-500/[0.02] focus:shadow-[0_0_25px_rgba(37,99,235,0.08)]"
-                      placeholder="Ex : Nike Air Max"
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <label
-                      htmlFor="price"
-                      className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
-                    >
-                      Prix
-                    </label>
-
-                    <input
-                      id="price"
-                      name="price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.price}
-                      onChange={handleChange}
-                      required
-                      className="w-full rounded-xl border border-white/10 bg-black px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-blue-400/50 focus:bg-blue-500/[0.02]"
-                      placeholder="Ex : 45000"
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <label
-                      htmlFor="stock"
-                      className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
-                    >
-                      Stock
-                    </label>
-
-                    <input
-                      id="stock"
-                      name="stock"
-                      type="number"
-                      min="0"
-                      value={form.stock}
-                      onChange={handleChange}
-                      required
-                      className="w-full rounded-xl border border-white/10 bg-black px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-blue-400/50 focus:bg-blue-500/[0.02]"
-                      placeholder="Ex : 25"
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <label
-                      htmlFor="description"
-                      className="mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-500"
-                    >
-                      Description
-                    </label>
-
-                    <input
-                      id="description"
-                      name="description"
-                      type="text"
-                      value={form.description}
-                      onChange={handleChange}
-                      className="w-full rounded-xl border border-white/10 bg-black px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-700 focus:border-blue-400/50 focus:bg-blue-500/[0.02]"
-                      placeholder="Description courte"
-                    />
-
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 md:col-span-2">
-
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 px-6 py-3 text-sm font-black text-white shadow-[0_0_25px_rgba(37,99,235,0.25)] transition hover:shadow-[0_0_40px_rgba(37,99,235,0.4)] disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      {submitting
-                        ? "Enregistrement..."
-                        : editingProduct
-                        ? "Modifier le produit"
-                        : "Ajouter le produit"}
-                    </button>
-
-                    {editingProduct && (
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        className="rounded-xl border border-white/10 bg-white/[0.03] px-6 py-3 text-sm font-bold text-zinc-400 transition hover:border-blue-400/30 hover:text-white"
-                      >
-                        Annuler
-                      </button>
-                    )}
-
-                  </div>
-
-                </form>
-
-              </section>
-
-            </AnimatedContainer>
-          )}
-
-          {/* =================================================
-              CHARGEMENT
-          ================================================== */}
-
-          {loading && (
-            <AnimatedContainer delay={0.2}>
-
-              <div className="flex min-h-[300px] items-center justify-center">
-
-                <div className="text-center">
-
-                  <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-blue-400 border-r-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.2)]" />
-
-                  <p className="text-sm text-zinc-600">
-                    Chargement du catalogue...
-                  </p>
-
-                </div>
-
-              </div>
-
-            </AnimatedContainer>
-          )}
-
-          {/* =================================================
-              AUCUN PRODUIT
-          ================================================== */}
-
-          {!loading &&
-            products.length === 0 && (
-              <AnimatedContainer delay={0.25}>
-
-                <div className="rounded-3xl border border-white/10 bg-[#05070a] p-14 text-center">
-
-                  <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-400/15 bg-blue-500/[0.05] text-2xl text-blue-400">
-                    ◇
-                  </div>
-
-                  <h2 className="text-xl font-black">
-                    Aucun produit disponible
-                  </h2>
-
-                  <p className="mt-2 text-sm text-zinc-600">
-                    Les produits apparaîtront ici
-                    lorsqu'ils seront disponibles.
-                  </p>
-
-                </div>
-
-              </AnimatedContainer>
+      <main className="mx-auto max-w-7xl px-4 py-6 md:px-6 lg:py-8">
+        {/* FIL D'ARIANE */}
+        <nav aria-label="Fil d'Ariane" className="flex items-center gap-1 text-xs text-muted">
+          <Link href="/" className="hover:text-brand">
+            Accueil
+          </Link>
+          <ChevronRightIcon size={14} />
+          <span className="text-ink-soft">Produits</span>
+        </nav>
+
+        {/* EN-TÊTE */}
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+              {query ? <>Résultats pour « {query} »</> : "Tous les produits"}
+            </h1>
+            {!loading && (
+              <p className="mt-1 text-sm text-muted">
+                {visibleProducts.length} article{visibleProducts.length > 1 ? "s" : ""}
+                {visibleProducts.length !== products.length && ` sur ${products.length}`}
+              </p>
             )}
-
-          {/* =================================================
-              PRODUITS
-          ================================================== */}
-
-          {!loading &&
-            products.length > 0 && (
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-
-                {products.map(
-                  (
-                    product,
-                    index
-                  ) => {
-
-                    const reviewData =
-                      productReviews[
-                        product.id
-                      ];
-
-                    const average = Number(
-                      reviewData?.average ??
-                        product.average_rating ??
-                        product.rating ??
-                        0
-                    );
-
-                    const reviewCount =
-                      reviewData?.count ??
-                      product.reviews_count ??
-                      0;
-
-                    return (
-                      <AnimatedContainer
-                        key={product.id}
-                        delay={
-                          0.25 +
-                          index * 0.06
-                        }
-                      >
-
-                        <article className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#05070a] transition duration-300 hover:-translate-y-1 hover:border-blue-400/30 hover:shadow-[0_20px_60px_rgba(37,99,235,0.1)]">
-
-                          {/* LIGNE ÉLECTRIQUE */}
-
-                          <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-40 transition group-hover:opacity-100" />
-
-                          {/* GLOW */}
-
-                          <div className="pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full bg-blue-500/[0.06] blur-[75px] transition group-hover:bg-blue-500/[0.14]" />
-
-                          {/* HEADER */}
-
-                          <div className="relative border-b border-white/[0.06] p-6">
-
-                            <div className="mb-5 flex items-start justify-between">
-
-                              <div className="flex items-center gap-3">
-
-                                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-400/20 bg-gradient-to-br from-blue-500/15 to-cyan-400/5 text-3xl text-blue-300 shadow-[0_0_25px_rgba(37,99,235,0.1)]">
-                                  ◈
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    toggleFavorite(
-                                      product.id
-                                    )
-                                  }
-                                  aria-label={
-                                    favoriteIds.includes(
-                                      product.id
-                                    )
-                                      ? "Retirer des favoris"
-                                      : "Ajouter aux favoris"
-                                  }
-                                  title={
-                                    favoriteIds.includes(
-                                      product.id
-                                    )
-                                      ? "Retirer des favoris"
-                                      : "Ajouter aux favoris"
-                                  }
-                                  className={`flex h-11 w-11 items-center justify-center rounded-full border transition-all ${
-                                    favoriteIds.includes(
-                                      product.id
-                                    )
-                                      ? "border-pink-400/40 bg-pink-500/15 text-pink-400 shadow-[0_0_25px_rgba(236,72,153,0.25)]"
-                                      : "border-white/10 bg-white/[0.03] text-zinc-500 hover:border-pink-400/30 hover:bg-pink-500/10 hover:text-pink-400"
-                                  }`}
-                                >
-                                  <span className="text-2xl leading-none">
-                                    {favoriteIds.includes(
-                                      product.id
-                                    )
-                                      ? "♥"
-                                      : "♡"}
-                                  </span>
-                                </button>
-
-                              </div>
-
-                              <span
-                                className={`rounded-full border px-3 py-1 text-[9px] font-bold uppercase tracking-wider ${
-                                  product.stock > 0
-                                    ? "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-400"
-                                    : "border-red-400/20 bg-red-400/[0.06] text-red-400"
-                                }`}
-                              >
-                                {product.stock > 0
-                                  ? "Disponible"
-                                  : "Rupture"}
-                              </span>
-
-                            </div>
-
-                            <h2 className="line-clamp-1 text-xl font-black">
-                              {product.name}
-                            </h2>
-
-                            <p className="mt-2 min-h-[42px] text-sm leading-6 text-zinc-600">
-                              {product.description ||
-                                "Aucune description disponible."}
-                            </p>
-
-                            {/* AVIS */}
-
-                            <ProductRating
-                              product={product}
-                              average={average}
-                              reviewCount={
-                                reviewCount
-                              }
-                              reviewProductId={
-                                reviewProductId
-                              }
-                              reviewRating={
-                                reviewRating
-                              }
-                              reviewComment={
-                                reviewComment
-                              }
-                              reviewSending={
-                                reviewSending
-                              }
-                              reviewMessage={
-                                reviewMessage
-                              }
-                              onOpenReview={() => {
-                                setReviewProductId(
-                                  product.id
-                                );
-
-                                setReviewRating(
-                                  5
-                                );
-
-                                setReviewComment(
-                                  ""
-                                );
-
-                                setReviewMessage(
-                                  ""
-                                );
-                              }}
-                              onRatingChange={
-                                setReviewRating
-                              }
-                              onCommentChange={
-                                setReviewComment
-                              }
-                              onSubmitReview={
-                                submitReview
-                              }
-                              onCancelReview={() => {
-                                setReviewProductId(
-                                  null
-                                );
-
-                                setReviewRating(
-                                  5
-                                );
-
-                                setReviewComment(
-                                  ""
-                                );
-
-                                setReviewMessage(
-                                  ""
-                                );
-                              }}
-                            />
-
-                          </div>
-
-                          {/* =================================================
-                              BOUTIQUE
-                          ================================================== */}
-
-                          <div className="p-6">
-
-                            {product.shop ? (
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  router.push(
-                                    `/Boutique/${product.shop?.id}`
-                                  )
-                                }
-                                className="group/shop w-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 text-left transition hover:border-blue-400/25 hover:bg-blue-500/[0.04]"
-                              >
-
-                                <div className="flex items-center gap-3">
-
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/10 text-blue-300">
-                                    ◇
-                                  </div>
-
-                                  <div className="min-w-0 flex-1">
-
-                                    <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
-                                      Boutique
-                                    </p>
-
-                                    <p className="truncate text-sm font-bold text-blue-300">
-                                      {
-                                        product.shop.name
-                                      }
-                                    </p>
-
-                                  </div>
-
-                                  <span className="text-zinc-700 transition group-hover/shop:translate-x-1 group-hover/shop:text-blue-300">
-                                    →
-                                  </span>
-
-                                </div>
-
-                                {product.shop.description && (
-                                  <p className="mt-3 line-clamp-2 text-xs leading-5 text-zinc-600">
-                                    {
-                                      product.shop
-                                        .description
-                                    }
-                                  </p>
-                                )}
-
-                              </button>
-
-                            ) : (
-
-                              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-
-                                <p className="text-xs text-zinc-600">
-                                  ◇ Boutique non associée
-                                </p>
-
-                              </div>
-
-                            )}
-
-                            {/* PRIX / STOCK */}
-
-                            <div className="mt-5 flex items-end justify-between">
-
-                              <div>
-
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
-                                  Prix
-                                </p>
-
-                                <p className="mt-1 text-2xl font-black text-blue-300">
-                                  {Number(
-                                    product.price
-                                  ).toLocaleString(
-                                    "fr-FR"
-                                  )}{" "}
-                                  <span className="text-sm text-cyan-400">
-                                    FCFA
-                                  </span>
-                                </p>
-
-                              </div>
-
-                              <div className="text-right">
-
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
-                                  Stock
-                                </p>
-
-                                <p
-                                  className={`mt-1 text-lg font-black ${
-                                    product.stock > 0
-                                      ? "text-emerald-400"
-                                      : "text-red-400"
-                                  }`}
-                                >
-                                  {
-                                    product.stock
-                                  }
-                                </p>
-
-                              </div>
-
-                            </div>
-
-                            {/* BARRE STOCK */}
-
-                            <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/[0.05]">
-
-                              <div
-                                className={`h-full rounded-full ${
-                                  product.stock > 0
-                                    ? "bg-gradient-to-r from-blue-600 via-blue-400 to-cyan-300"
-                                    : "bg-red-500"
-                                }`}
-                                style={{
-                                  width:
-                                    product.stock <=
-                                    0
-                                      ? "100%"
-                                      : `${Math.min(
-                                          product.stock *
-                                            5,
-                                          100
-                                        )}%`,
-                                }}
-                              />
-
-                            </div>
-
-                            {/* PANIER */}
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                addToCart(
-                                  product.id
-                                )
-                              }
-                              disabled={
-                                product.stock <=
-                                0
-                              }
-                              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 px-5 py-3 text-sm font-black text-white shadow-[0_0_25px_rgba(37,99,235,0.18)] transition hover:shadow-[0_0_35px_rgba(37,99,235,0.35)] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:bg-none disabled:text-zinc-600 disabled:shadow-none"
-                            >
-
-                              {product.stock > 0 ? (
-                                <>
-                                  <span>
-                                    🛒
-                                  </span>
-
-                                  Ajouter au panier
-                                </>
-                              ) : (
-                                "Rupture de stock"
-                              )}
-
-                            </button>
-
-                            {/* ADMIN / VENDEUR */}
-
-                            {canManageProducts && (
-                              <div className="mt-3 grid grid-cols-2 gap-3">
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleEdit(
-                                      product
-                                    )
-                                  }
-                                  className="rounded-xl border border-blue-400/20 bg-blue-500/[0.04] px-4 py-2.5 text-xs font-bold text-blue-300 transition hover:border-blue-400/40 hover:bg-blue-500/[0.1]"
-                                >
-                                  Modifier
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleDelete(
-                                      product.id
-                                    )
-                                  }
-                                  className="rounded-xl border border-red-400/20 bg-red-400/[0.03] px-4 py-2.5 text-xs font-bold text-red-400 transition hover:border-red-400/40 hover:bg-red-400/[0.08]"
-                                >
-                                  Supprimer
-                                </button>
-
-                              </div>
-                            )}
-
-                          </div>
-
-                        </article>
-
-                      </AnimatedContainer>
-                    );
-                  }
-                )}
-
-              </div>
-            )}
-
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowFilters((open) => !open)}
+              aria-expanded={showFilters}
+              className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm font-medium text-ink-soft transition hover:bg-surface-2 lg:hidden"
+            >
+              <FilterIcon size={16} /> Filtres
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-brand px-1.5 text-[11px] font-bold text-on-brand">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            <label htmlFor="catalog-sort" className="sr-only">
+              Trier par
+            </label>
+            <select
+              id="catalog-sort"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SortKey)}
+              className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm font-medium text-ink-soft outline-none focus:border-brand"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  Trier : {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-      </div>
+        {/* ERREUR */}
+        {error && (
+          <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">
+            <span>{error}</span>
+            <button type="button" onClick={() => setError("")} aria-label="Masquer l'erreur">
+              <CloseIcon size={16} />
+            </button>
+          </div>
+        )}
 
-    </main>
+        {/* ESPACE VENDEUR / ADMIN */}
+        {canManageProducts && (
+          <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface">
+            <button
+              type="button"
+              onClick={() => setManagerOpen((open) => !open)}
+              aria-expanded={managerOpen}
+              className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+            >
+              <span className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-soft text-brand">
+                  {editingProduct ? <PencilIcon size={17} /> : <PlusIcon size={18} />}
+                </span>
+                <span>
+                  <span className="block font-semibold text-ink">
+                    {editingProduct ? "Modifier le produit" : "Ajouter un produit"}
+                  </span>
+                  <span className="block text-xs text-muted">
+                    {isSeller
+                      ? "Le produit sera associé à votre boutique."
+                      : "Gestion des produits de la plateforme."}
+                  </span>
+                </span>
+              </span>
+              <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
+                {isAdmin ? "Administrateur" : "Vendeur"}
+              </span>
+            </button>
+
+            {managerOpen && (
+              <form onSubmit={handleSubmit} className="grid gap-4 border-t border-line p-5 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="sm:col-span-2">
+                  <label htmlFor="name" className="mb-1.5 block text-xs font-semibold text-ink-soft">
+                    Nom du produit
+                  </label>
+                  <input id="name" name="name" type="text" value={form.name} onChange={handleChange} required placeholder="Ex : Nike Air Max" className={inputClass} />
+                </div>
+
+                <div>
+                  <label htmlFor="price" className="mb-1.5 block text-xs font-semibold text-ink-soft">
+                    Prix
+                  </label>
+                  <input id="price" name="price" type="number" min="0" step="0.01" value={form.price} onChange={handleChange} required placeholder="45000" className={inputClass} />
+                </div>
+
+                <div>
+                  <label htmlFor="stock" className="mb-1.5 block text-xs font-semibold text-ink-soft">
+                    Stock
+                  </label>
+                  <input id="stock" name="stock" type="number" min="0" value={form.stock} onChange={handleChange} required placeholder="25" className={inputClass} />
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <label htmlFor="description" className="mb-1.5 block text-xs font-semibold text-ink-soft">
+                    Description
+                  </label>
+                  <input id="description" name="description" type="text" value={form.description} onChange={handleChange} placeholder="Description courte" className={inputClass} />
+                </div>
+
+                <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-brand transition hover:bg-brand-hover disabled:opacity-60"
+                  >
+                    {submitting ? "Enregistrement..." : editingProduct ? "Modifier le produit" : "Ajouter le produit"}
+                  </button>
+                  {editingProduct && (
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="rounded-xl border border-line px-5 py-2.5 text-sm font-semibold text-ink-soft transition hover:bg-surface-2"
+                    >
+                      Annuler
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
+          </section>
+        )}
+
+        <div className="mt-6 lg:grid lg:grid-cols-[250px_1fr] lg:gap-8">
+          {/* FILTRES */}
+          <aside className={`${showFilters ? "mb-6 block" : "hidden"} rounded-2xl border border-line bg-surface p-5 lg:sticky lg:top-36 lg:mb-0 lg:block lg:self-start`}>
+            {filtersPanel}
+          </aside>
+
+          {/* GRILLE */}
+          <section aria-label="Liste des produits" aria-busy={loading}>
+            {loading ? (
+              <>
+                <p className="sr-only">Chargement du catalogue...</p>
+                <div className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-3">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <ProductCardSkeleton key={i} />
+                  ))}
+                </div>
+              </>
+            ) : products.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-line bg-surface px-6 py-16 text-center">
+                <h2 className="text-lg font-semibold text-ink">Aucun produit disponible</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Les produits apparaîtront ici lorsqu&apos;ils seront disponibles.
+                </p>
+              </div>
+            ) : visibleProducts.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-line bg-surface px-6 py-16 text-center">
+                <h2 className="text-lg font-semibold text-ink">Aucun produit ne correspond à vos critères</h2>
+                <p className="mt-1 text-sm text-muted">Essayez d&apos;élargir votre recherche.</p>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="mt-5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-brand transition hover:bg-brand-hover"
+                >
+                  Réinitialiser les filtres
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-3">
+                {visibleProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    average={ratingOf(product)}
+                    reviewCount={productReviews[product.id]?.count ?? product.reviews_count ?? 0}
+                    isFavorite={favorites.isFavorite(product.id)}
+                    onToggleFavorite={() => favorites.toggle(product.id)}
+                    onAddToCart={() => handleAddToCart(product.id)}
+                    addState={addStates[product.id]}
+                  >
+                    <ReviewBox
+                      productId={product.id}
+                      open={reviewProductId === product.id}
+                      rating={reviewRating}
+                      comment={reviewComment}
+                      sending={reviewSending}
+                      message={reviewMessage}
+                      onOpen={() => openReview(product.id)}
+                      onRatingChange={setReviewRating}
+                      onCommentChange={setReviewComment}
+                      onSubmit={submitReview}
+                      onCancel={closeReview}
+                    />
+
+                    {canManageProducts && (
+                      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(product)}
+                          className="flex items-center justify-center gap-1.5 rounded-lg border border-line py-2 text-xs font-semibold text-ink-soft transition hover:border-brand hover:text-brand"
+                        >
+                          <PencilIcon size={13} /> Modifier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(product.id)}
+                          className="flex items-center justify-center gap-1.5 rounded-lg border border-line py-2 text-xs font-semibold text-ink-soft transition hover:border-danger hover:bg-danger-soft hover:text-danger"
+                        >
+                          <TrashIcon size={13} /> Supprimer
+                        </button>
+                      </div>
+                    )}
+                  </ProductCard>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
   );
 }
